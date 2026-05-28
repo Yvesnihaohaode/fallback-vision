@@ -1,16 +1,16 @@
 {
   "name": "fallback-vision",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "AI Gateway with intelligent visual fallback routing",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
     "fallback-vision": "dist/cli.js",
     "fallback-vision-setup": "dist/setup.js",
-    "fv-claude": "bin/fv-claude",
-    "fv-codex": "bin/fv-codex",
-    "fv-claude-docker": "bin/fv-claude-docker",
-    "fv-codex-docker": "bin/fv-codex-docker"
+    "fv-claude": "bin/fv-claude.js",
+    "fv-codex": "bin/fv-codex.js",
+    "fv-claude-docker": "bin/fv-claude.js",
+    "fv-codex-docker": "bin/fv-codex.js"
   },
   "scripts": {
     "build": "tsc",
