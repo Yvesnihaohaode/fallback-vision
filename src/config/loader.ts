@@ -69,7 +69,7 @@ export function loadConfig(args: { port?: number; host?: string; verbose?: boole
   return {
     host,
     port,
-    version: "0.1.0",
+    version: (() => { try { return require("../../package.json").version; } catch { return "0.1.12"; } })(),
     registry,
     routingStrategy: "balanced",
     dashboardEnabled: process.env.FALLBACK_VISION_NO_DASHBOARD !== "1",
