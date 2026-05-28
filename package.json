@@ -1,6 +1,6 @@
 {
   "name": "fallback-vision",
-  "version": "0.1.5",
+  "version": "0.1.7",
   "description": "AI Gateway with intelligent visual fallback routing",
   "type": "module",
   "main": "dist/index.js",

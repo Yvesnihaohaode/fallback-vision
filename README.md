@@ -32,7 +32,7 @@ docker run -d -p 8789:8789 \
 git clone https://github.com/Yvesnihaohaode/fallback-vision.git
 cd fallback-vision
 npm install
-./bin/fv-claude    # 或 ./bin/fv-codex
+node bin/fv-claude.js    # 或 node bin/fv-codex.js
 ```
 
 ---

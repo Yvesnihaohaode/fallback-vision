@@ -5,7 +5,6 @@ import { spawn, execSync } from "node:child_process";
 import { existsSync, mkdirSync, unlinkSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { homedir, platform } from "node:os";
-import { createRequire } from "node:module";
 import http from "node:http";
 
 const PORT = Number(process.env.FALLBACK_VISION_PORT) || 8789;
@@ -15,13 +14,11 @@ function findProjectRoot() {
   const scriptDir = dirname(new URL(import.meta.url).pathname);
   const gitCloneRoot = join(scriptDir, "..");
   if (existsSync(join(gitCloneRoot, "dist", "cli.js"))) return gitCloneRoot;
-
   try {
     const npmRoot = execSync("npm root -g", { encoding: "utf-8" }).trim();
     const npmDir = join(npmRoot, "fallback-vision");
     if (existsSync(join(npmDir, "dist", "cli.js"))) return npmDir;
   } catch {}
-
   return null;
 }
 
@@ -45,9 +42,23 @@ function waitForServer(port, timeout = 10000) {
 }
 
 function openBrowser(url) {
-  const cmd =
-    platform() === "darwin" ? "open" : platform() === "win32" ? "start" : "xdg-open";
-  spawn(cmd, [url], { stdio: "ignore", detached: true }).unref();
+  try {
+    if (platform() === "win32") {
+      spawn("cmd.exe", ["/c", "start", url], { stdio: "ignore", detached: true }).unref();
+    } else if (platform() === "darwin") {
+      spawn("open", [url], { stdio: "ignore", detached: true }).unref();
+    } else {
+      spawn("xdg-open", [url], { stdio: "ignore", detached: true }).unref();
+    }
+  } catch {}
+}
+
+function killServer() {
+  if (platform() === "win32") {
+    spawn("taskkill", ["/f", "/fi", "WINDOWTITLE eq fallback*"], { stdio: "ignore", detached: true }).unref();
+  } else {
+    spawn("pkill", ["-f", "fallback-vision"], { stdio: "ignore", detached: true }).unref();
+  }
 }
 
 async function main() {
@@ -61,17 +72,13 @@ async function main() {
   }
 
   console.log(`📁 项目目录: ${root}`);
-
   mkdirSync(join(homedir(), ".fallback-vision"), { recursive: true });
   if (existsSync(RESTART_FLAG)) unlinkSync(RESTART_FLAG);
 
-  // Start server
   const running = await new Promise((resolve) => {
-    http
-      .get(`http://127.0.0.1:${PORT}/healthz`, (res) => {
-        resolve(res.statusCode === 200);
-      })
-      .on("error", () => resolve(false));
+    http.get(`http://127.0.0.1:${PORT}/healthz`, (res) => {
+      resolve(res.statusCode === 200);
+    }).on("error", () => resolve(false));
   });
 
   if (running) {
@@ -79,59 +86,41 @@ async function main() {
   } else {
     console.log("🚀 启动服务...");
     const server = spawn("node", ["dist/cli.js", "--port", String(PORT)], {
-      cwd: root,
-      stdio: "ignore",
-      detached: true,
+      cwd: root, stdio: "ignore", detached: true,
     });
     server.unref();
-
     const ok = await waitForServer(PORT, 10000);
-    if (!ok) {
-      console.error("❌ 启动失败，请检查端口", PORT);
-      process.exit(1);
-    }
+    if (!ok) { console.error("❌ 启动失败"); process.exit(1); }
     console.log("✅ 服务启动成功");
   }
 
   const dashboardUrl = `http://127.0.0.1:${PORT}/`;
   console.log(`\n🌐 Web UI: ${dashboardUrl}`);
   console.log("   可以在这里进一步调整设置\n");
-
   openBrowser(dashboardUrl);
-
   console.log("📋 在网页上配置好后，点击「保存并重启使用」\n");
 
-  // Wait for restart flag
-  const checkInterval = setInterval(() => {
+  setInterval(() => {
     if (existsSync(RESTART_FLAG)) {
-      clearInterval(checkInterval);
       unlinkSync(RESTART_FLAG);
       console.log("\n🔄 正在重启...");
-      spawn("pkill", ["-f", "fallback-vision"], { stdio: "ignore" }).unref();
+      killServer();
       setTimeout(async () => {
         console.log("🚀 重新启动服务...");
         const server = spawn("node", ["dist/cli.js", "--port", String(PORT)], {
-          cwd: root,
-          stdio: "ignore",
-          detached: true,
+          cwd: root, stdio: "ignore", detached: true,
         });
         server.unref();
         const ok = await waitForServer(PORT, 10000);
         if (ok) {
           console.log("✅ 服务重启成功");
           console.log("🤖 启动 Claude Code...");
-          console.log(`   运行: ANTHROPIC_BASE_URL=http://127.0.0.1:${PORT} claude`);
-          console.log(`   或直接运行: fv-claude\n`);
-        } else {
-          console.error("❌ 重启失败");
-        }
+          console.log(`   运行: ANTHROPIC_BASE_URL=http://127.0.0.1:${PORT} claude\n`);
+        } else { console.error("❌ 重启失败"); }
         process.exit(0);
       }, 2000);
     }
   }, 1000);
 }
 
-main().catch((e) => {
-  console.error("❌ 错误:", e);
-  process.exit(1);
-});
+main().catch((e) => { console.error("❌ 错误:", e); process.exit(1); });
