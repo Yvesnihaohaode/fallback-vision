@@ -88,7 +88,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 <div class="hdr">
   <h1>⚡ Fallback Vision</h1>
   <p>AI Gateway — 视觉回退路由</p>
-  <div class="ver">v0.1.9 · ${cfg.port} 端口</div>
+  <div class="ver">v${require("../../package.json").version} · ${cfg.port} 端口</div>
 </div>
 <div class="ctr">
   <div class="tabs">
