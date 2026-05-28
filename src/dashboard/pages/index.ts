@@ -1,8 +1,6 @@
 import type { ServerResponse } from "node:http";
 import type { GatewayConfig } from "../../config/loader.js";
-import { loadSettings, detectModelCapabilities, PROVIDERS, isMiMoModel, type ProviderInfo } from "../../config/settings.js";
-
-const providersJSON = JSON.stringify(PROVIDERS);
+import { loadSettings, detectModelCapabilities, PROVIDERS, isMiMoModel } from "../../config/settings.js";
 
 export function sendIndex(cfg: GatewayConfig, res: ServerResponse): void {
   const settings = loadSettings();
@@ -15,6 +13,10 @@ export function sendIndex(cfg: GatewayConfig, res: ServerResponse): void {
     ? `http://127.0.0.1:${cfg.port}/v1/chat/completions`
     : `http://127.0.0.1:${cfg.port}/v1/messages`;
 
+  const providersData = JSON.stringify(PROVIDERS);
+  const mainData = JSON.stringify(settings.mainModel);
+  const visionData = JSON.stringify(settings.visionModel);
+
   const html = `<!DOCTYPE html>
 <html lang="zh">
 <head>
@@ -26,7 +28,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .hdr{background:linear-gradient(135deg,#1a1b26,#16161e);padding:24px 32px;border-bottom:1px solid #2d2f3d}
 .hdr h1{font-size:24px;color:#c0caf5}.hdr p{color:#565f89;margin-top:4px;font-size:14px}
 .hdr .ver{color:#7aa2f7;font-size:12px;margin-top:8px}
-.ctr{max-width:1200px;margin:0 auto;padding:32px}
+.ctr{max-width:1000px;margin:0 auto;padding:32px}
 .tabs{display:flex;gap:0;margin-bottom:24px;border-bottom:1px solid #2d2f3d}
 .tab{padding:12px 24px;cursor:pointer;color:#565f89;font-size:14px;border-bottom:2px solid transparent;transition:all .2s}
 .tab:hover{color:#a9b1d6}.tab.active{color:#7aa2f7;border-bottom-color:#7aa2f7}
@@ -38,23 +40,19 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .slot-label{display:inline-block;padding:4px 12px;border-radius:6px;font-size:12px;font-weight:600;margin-bottom:16px}
 .slot-label.main{background:#1a2a4a;color:#7aa2f7}
 .slot-label.vision{background:#2a1a4a;color:#bb9af7}
-.slot-title{font-size:20px;font-weight:600;color:#c0caf5;margin-bottom:4px}
 .slot-subtitle{color:#565f89;font-size:13px;margin-bottom:20px}
 .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
 .form-group{display:flex;flex-direction:column;gap:6px}
 .form-label{color:#565f89;font-size:12px;font-weight:500;text-transform:uppercase;letter-spacing:.5px}
-.input,.select{background:#16161e;border:1px solid #2d2f3d;border-radius:8px;padding:10px 14px;color:#c0caf5;font-size:14px;width:100%;transition:border-color .2s}
-.input:focus,.select:focus{outline:none;border-color:#7aa2f7}
-.select{cursor:pointer;-webkit-appearance:none;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23565f89' d='M6 8L1 3h10z'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;padding-right:32px}
-.select option{background:#16161e;color:#c0caf5}
+.input{background:#16161e;border:1px solid #2d2f3d;border-radius:8px;padding:10px 14px;color:#c0caf5;font-size:14px;width:100%;transition:border-color .2s}
+.input:focus{outline:none;border-color:#7aa2f7}
 .cap-box{display:flex;gap:10px;align-items:center;margin-top:16px;padding:12px 16px;background:#16161e;border-radius:8px}
 .cap-icon{font-size:20px}.cap-info{flex:1}.cap-name{font-size:14px;font-weight:500;color:#c0caf5}
 .cap-desc{font-size:12px;color:#565f89;margin-top:2px}
 .cap-badges{display:flex;gap:6px;flex-wrap:wrap}
 .badge{display:inline-block;padding:3px 10px;border-radius:6px;font-size:11px;font-weight:600}
-.badge.v{background:#1a3a4a;color:#7dcfff}.badge.r{background:#2a1a3a;color:#bb9af7}
 .badge.yes{background:#1a3a2a;color:#73daca}.badge.no{background:#3a1a1a;color:#f7768e}
-.badge.y{background:#2d2f3d;color:#a9b1d6}.badge.n{background:#2d2f3d;color:#565f89}
+.badge.y{background:#2d2f3d;color:#a9b1d6}
 .btn{padding:10px 24px;border-radius:8px;border:none;cursor:pointer;font-size:14px;font-weight:500;transition:all .2s}
 .btn-primary{background:#7aa2f7;color:#1a1b26}.btn-primary:hover{background:#89b4fa}
 .client-toggle{display:flex;gap:0;background:#16161e;border:1px solid #2d2f3d;border-radius:10px;padding:4px;margin-bottom:20px;width:fit-content}
@@ -70,14 +68,15 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .flow-arrow{color:#565f89;font-size:20px}
 .status-bar{display:flex;gap:16px;margin-bottom:24px;padding:16px 20px;background:#1a1b26;border:1px solid #2d2f3d;border-radius:10px}
 .status-item{display:flex;align-items:center;gap:8px;font-size:13px}
-.model-pick{display:flex;flex-direction:column;gap:8px;max-height:320px;overflow-y:auto;padding:8px;background:#16161e;border:1px solid #2d2f3d;border-radius:8px;margin-top:8px}
-.model-group-title{font-size:11px;font-weight:600;color:#7aa2f7;text-transform:uppercase;letter-spacing:1px;padding:8px 8px 4px;position:sticky;top:0;background:#16161e;z-index:1}
-.model-opt{padding:8px 12px;border-radius:6px;cursor:pointer;font-size:13px;color:#a9b1d6;transition:all .15s;display:flex;justify-content:space-between;align-items:center}
-.model-opt:hover{background:#1a2a4a;color:#c0caf5}
-.model-opt.selected{background:#1a2a4a;color:#7aa2f7}
-.model-opt .mname{font-weight:500}.model-opt .mtags{display:flex;gap:4px}
-.model-opt .mtag{font-size:10px;padding:2px 6px;border-radius:4px;background:#2d2f3d;color:#565f89}
-.model-opt .mtag.vis{background:#1a3a4a;color:#73daca}.model-opt .mtag.rea{background:#2a1a3a;color:#bb9af7}
+.model-list{max-height:280px;overflow-y:auto;padding:8px;background:#16161e;border:1px solid #2d2f3d;border-radius:8px;margin-top:12px}
+.model-group{font-size:11px;font-weight:600;color:#7aa2f7;text-transform:uppercase;letter-spacing:1px;padding:8px 8px 4px}
+.model-item{padding:8px 12px;border-radius:6px;cursor:pointer;font-size:13px;color:#a9b1d6;transition:all .15s;display:flex;justify-content:space-between;align-items:center}
+.model-item:hover{background:#1a2a4a;color:#c0caf5}
+.model-item.selected{background:#1a2a4a;color:#7aa2f7}
+.model-item .mname{font-weight:500}
+.model-item .mtags{display:flex;gap:4px}
+.model-item .mtag{font-size:10px;padding:2px 6px;border-radius:4px}
+.mtag.vis{background:#1a3a4a;color:#73daca}.mtag.rea{background:#2a1a3a;color:#bb9af7}
 .local-toggle{display:flex;align-items:center;gap:12px;padding:12px 16px;background:#16161e;border-radius:8px;margin-top:12px}
 .local-toggle label{font-size:13px;color:#a9b1d6;cursor:pointer}
 .tip{color:#565f89;font-size:12px;margin-top:4px}
@@ -89,7 +88,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 <div class="hdr">
   <h1>⚡ Fallback Vision</h1>
   <p>AI Gateway — 视觉回退路由</p>
-  <div class="ver">v0.1.7 · ${cfg.port} 端口</div>
+  <div class="ver">v0.1.9 · ${cfg.port} 端口</div>
 </div>
 <div class="ctr">
   <div class="tabs">
@@ -97,7 +96,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     <div class="tab" data-page="settings">设置</div>
   </div>
 
-  <!-- Overview Page -->
   <div id="page-overview" class="page active">
     <div class="status-bar">
       <div class="status-item">状态 <span class="st on">运行中</span></div>
@@ -118,8 +116,39 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       </div>
     </div>
 
-    ${renderModelCard("主模型 — MAIN MODEL", "main", settings.mainModel, mainCap)}
-    ${renderModelCard("视觉模型 — VISION MODEL", "vision", settings.visionModel, visionCap)}
+    <div class="slot-card">
+      <div class="slot-label main">主模型 — MAIN MODEL</div>
+      <div style="font-size:20px;font-weight:600;color:#c0caf5">${settings.mainModel.providerName || "未配置"}</div>
+      <div style="color:#565f89;font-size:13px">${settings.mainModel.modelName || "未配置"}</div>
+      <div class="cap-box">
+        <div class="cap-icon">${mainCap.vision ? '👁️' : '📝'}</div>
+        <div class="cap-info">
+          <div class="cap-name">${mainCap.vision ? 'Multimodal' : 'Text Only'}</div>
+          <div class="cap-desc">${mainCap.description}</div>
+        </div>
+        <div class="cap-badges">
+          <span class="badge ${mainCap.vision ? 'yes' : 'no'}">Vision ${mainCap.vision ? '✓' : '✗'}</span>
+          <span class="badge ${mainCap.reasoning ? 'yes' : 'no'}">Reasoning ${mainCap.reasoning ? '✓' : '✗'}</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="slot-card">
+      <div class="slot-label vision">视觉模型 — VISION MODEL</div>
+      <div style="font-size:20px;font-weight:600;color:#c0caf5">${settings.visionModel.providerName || "未配置"}</div>
+      <div style="color:#565f89;font-size:13px">${settings.visionModel.modelName || "未配置"}</div>
+      <div class="cap-box">
+        <div class="cap-icon">${visionCap.vision ? '👁️' : '📝'}</div>
+        <div class="cap-info">
+          <div class="cap-name">${visionCap.vision ? 'Multimodal' : 'Text Only'}</div>
+          <div class="cap-desc">${visionCap.description}</div>
+        </div>
+        <div class="cap-badges">
+          <span class="badge ${visionCap.vision ? 'yes' : 'no'}">Vision ${visionCap.vision ? '✓' : '✗'}</span>
+          <span class="badge ${visionCap.reasoning ? 'yes' : 'no'}">Reasoning ${visionCap.reasoning ? '✓' : '✗'}</span>
+        </div>
+      </div>
+    </div>
 
     <div class="card">
       <h3 style="margin-bottom:12px;color:#c0caf5">📌 使用方式</h3>
@@ -131,26 +160,74 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     </div>
   </div>
 
-  <!-- Settings Page -->
   <div id="page-settings" class="page">
     <div class="card">
       <h3 style="margin-bottom:16px;color:#c0caf5">客户端类型</h3>
       <div class="client-toggle">
-        <button class="client-btn ${isCodex ? 'active' : ''}" onclick="setClient('codex')" id="btn-codex"><span class="client-icon">🔧</span>Codex (OpenAI)</button>
-        <button class="client-btn ${!isCodex ? 'active' : ''}" onclick="setClient('claude')" id="btn-claude"><span class="client-icon">💬</span>Claude Code (Anthropic)</button>
+        <button class="client-btn ${isCodex ? 'active' : ''}" onclick="setClient('codex')" id="btn-codex">🔧 Codex (OpenAI)</button>
+        <button class="client-btn ${!isCodex ? 'active' : ''}" onclick="setClient('claude')" id="btn-claude">💬 Claude Code (Anthropic)</button>
       </div>
-      <p class="tip">Codex 使用 OpenAI 协议 <code>/v1/chat/completions</code>。Claude Code 使用 Anthropic Messages 协议 <code>/v1/messages</code>。</p>
+      <p class="tip">Codex 使用 OpenAI 协议。Claude Code 使用 Anthropic Messages 协议。</p>
     </div>
 
-    ${renderModelSettings("主模型 — MAIN MODEL", "m", settings.mainModel, mainCap, "处理所有文字/代码任务，遇到图片时自动切换到视觉模型")}
-    ${renderModelSettings("视觉模型 — VISION MODEL", "v", settings.visionModel, visionCap, "只在需要识别图片/文档/视频时被调用")}
+    <div class="slot-card">
+      <div class="slot-label main">主模型 — MAIN MODEL</div>
+      <div class="slot-subtitle">处理所有文字/代码任务，遇到图片时自动切换到视觉模型</div>
+      <div class="form-grid">
+        <div class="form-group">
+          <label class="form-label">Provider 名称</label>
+          <input class="input" id="m-provider" placeholder="DeepSeek / OpenAI / MiMo ..." value="${settings.mainModel.providerName}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Base URL</label>
+          <input class="input" id="m-url" placeholder="填入厂商 API 地址" value="${settings.mainModel.baseUrl}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">API Key</label>
+          <input class="input" id="m-key" type="password" placeholder="sk-..." value="${settings.mainModel.apiKey}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">模型名称</label>
+          <input class="input" id="m-model" placeholder="输入模型名或从下方选择" value="${settings.mainModel.modelName}">
+        </div>
+      </div>
+      <div class="model-list" id="m-list"></div>
+      <div class="tip">💡 点击模型自动填充，Vision ✓ = 支持图片，Reasoning ✓ = 支持深度推理</div>
+      <div id="m-cap" class="cap-box" style="margin-top:12px"></div>
+    </div>
+
+    <div class="slot-card">
+      <div class="slot-label vision">视觉模型 — VISION MODEL</div>
+      <div class="slot-subtitle">只在需要识别图片/文档/视频时被调用</div>
+      <div class="form-grid">
+        <div class="form-group">
+          <label class="form-label">Provider 名称</label>
+          <input class="input" id="v-provider" placeholder="选择厂商或手动输入" value="${settings.visionModel.providerName}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Base URL</label>
+          <input class="input" id="v-url" placeholder="填入厂商 API 地址" value="${settings.visionModel.baseUrl}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">API Key</label>
+          <input class="input" id="v-key" type="password" placeholder="sk-..." value="${settings.visionModel.apiKey}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">模型名称</label>
+          <input class="input" id="v-model" placeholder="输入模型名或从下方选择" value="${settings.visionModel.modelName}">
+        </div>
+      </div>
+      <div class="model-list" id="v-list"></div>
+      <div class="tip">💡 视觉模型需要支持图片（Vision ✓）</div>
+      <div id="v-cap" class="cap-box" style="margin-top:12px"></div>
+    </div>
 
     <div id="local-search-section" style="display:${isMiMo ? 'block' : 'none'}">
       <div class="card">
         <h3 style="margin-bottom:8px;color:#c0caf5">🔍 本地优化搜索（MiMo 专属）</h3>
         <p class="tip" style="margin-bottom:12px">MiMo 不支持 Claude Code 的 web_search / web_fetch。开启后由 Fallback Vision 本地处理搜索请求。</p>
         <div class="local-toggle">
-          <input type="checkbox" id="local-search-toggle" ${localSearch ? 'checked' : ''} onchange="toggleLocalSearch()">
+          <input type="checkbox" id="local-search-toggle" ${localSearch ? 'checked' : ''}>
           <label for="local-search-toggle">开启本地优化搜索</label>
         </div>
       </div>
@@ -164,164 +241,179 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 </div>
 
 <script>
-const PROVIDERS = ${providersJSON};
-let currentClient = '${settings.clientType}';
-const currentMain = ${JSON.stringify(settings.mainModel)};
-const currentVision = ${JSON.stringify(settings.visionModel)};
+var PROVIDERS = ${providersData};
+var currentClient = '${settings.clientType}';
 
-function setClient(c){
-  currentClient=c;
-  document.querySelectorAll('.client-btn').forEach(b=>b.classList.remove('active'));
-  document.getElementById('btn-'+c).classList.add('active');
+function setClient(c) {
+  currentClient = c;
+  document.querySelectorAll('.client-btn').forEach(function(b) { b.classList.remove('active'); });
+  document.getElementById('btn-' + c).classList.add('active');
 }
 
-function buildProviderSelect(prefix, currentProvider){
-  let html = '<option value="">-- 选择厂商或手动输入 --</option>';
-  for(const p of PROVIDERS){
-    if(p.name==='其他') continue;
-    const sel = currentProvider===p.name ? 'selected' : '';
-    html += '<option value="'+p.name+'" data-url="'+p.baseUrl+'" '+sel+'>'+p.name+'</option>';
-  }
-  html += '<option value="__custom">手动输入...</option>';
-  return html;
-}
-
-function buildModelPicker(prefix, currentModel, filterVision){
-  let html = '';
-  for(const p of PROVIDERS){
-    const models = filterVision ? p.models.filter(m=>m.vision) : p.models;
-    if(models.length===0) continue;
-    html += '<div class="model-group-title">'+p.name+'</div>';
-    for(const m of models){
-      const sel = currentModel===m.id ? ' selected' : '';
-      const tags = [];
-      if(m.vision) tags.push('<span class="mtag vis">Vision ✓</span>');
-      if(m.reasoning) tags.push('<span class="mtag rea">Reasoning ✓</span>');
-      html += '<div class="model-opt'+sel+'" data-model="'+m.id+'" data-provider="'+p.name+'" data-url="'+p.baseUrl+'" onclick="pickModel(this,\''+prefix+'\')" title="'+m.description+'"><span class="mname">'+m.id+'</span><span class="mtags">'+tags.join('')+'</span></div>';
+function renderModelList(listId, prefix, currentModel, filterVision) {
+  var el = document.getElementById(listId);
+  if (!el) return;
+  var html = '';
+  for (var i = 0; i < PROVIDERS.length; i++) {
+    var p = PROVIDERS[i];
+    if (p.name === '其他') continue;
+    var models = filterVision ? p.models.filter(function(m) { return m.vision; }) : p.models;
+    if (models.length === 0) continue;
+    html += '<div class="model-group">' + p.name + '</div>';
+    for (var j = 0; j < models.length; j++) {
+      var m = models[j];
+      var sel = currentModel === m.id ? ' selected' : '';
+      var tags = '';
+      if (m.vision) tags += '<span class="mtag vis">Vision ✓</span>';
+      if (m.reasoning) tags += '<span class="mtag rea">Reasoning ✓</span>';
+      html += '<div class="model-item' + sel + '" data-model="' + m.id + '" data-provider="' + p.name + '" data-url="' + p.baseUrl + '" onclick="pickModel(this,\'' + prefix + '\')" title="' + m.description + '">';
+      html += '<span class="mname">' + m.id + '</span><span class="mtags">' + tags + '</span></div>';
     }
   }
-  html += '<div class="model-group-title">其他</div>';
-  html += '<div class="model-opt" data-model="__custom" onclick="pickModel(this,\''+prefix+'\')"><span class="mname">手动输入模型名...</span></div>';
-  return html;
+  html += '<div class="model-group">其他</div>';
+  html += '<div class="model-item" data-model="__custom" onclick="pickModel(this,\'' + prefix + '\')"><span class="mname">手动输入模型名...</span></div>';
+  el.innerHTML = html;
 }
 
-function pickModel(el, prefix){
-  el.parentElement.querySelectorAll('.model-opt').forEach(o=>o.classList.remove('selected'));
+function pickModel(el, prefix) {
+  var list = el.parentElement;
+  list.querySelectorAll('.model-item').forEach(function(o) { o.classList.remove('selected'); });
   el.classList.add('selected');
-  const model = el.dataset.model;
-  const provider = el.dataset.provider || '';
-  const url = el.dataset.url || '';
-  if(model==='__custom'){
-    document.getElementById(prefix+'-model').value='';
-    document.getElementById(prefix+'-model').focus();
+  var model = el.getAttribute('data-model');
+  var provider = el.getAttribute('data-provider') || '';
+  var url = el.getAttribute('data-url') || '';
+  if (model === '__custom') {
+    document.getElementById(prefix + '-model').value = '';
+    document.getElementById(prefix + '-model').focus();
   } else {
-    document.getElementById(prefix+'-model').value=model;
-    if(provider){
-      document.getElementById(prefix+'-provider').value=provider;
-      if(url) document.getElementById(prefix+'-url').value=url;
+    document.getElementById(prefix + '-model').value = model;
+    if (provider) document.getElementById(prefix + '-provider').value = provider;
+    if (url) document.getElementById(prefix + '-url').value = url;
+  }
+  updateCap(prefix === 'm' ? 'main' : 'vision');
+  checkMiMo();
+}
+
+function updateCap(which) {
+  var prefix = which === 'main' ? 'm' : 'v';
+  var model = document.getElementById(prefix + '-model').value;
+  var cap = null;
+  for (var i = 0; i < PROVIDERS.length; i++) {
+    for (var j = 0; j < PROVIDERS[i].models.length; j++) {
+      if (PROVIDERS[i].models[j].id === model) {
+        cap = PROVIDERS[i].models[j];
+        break;
+      }
+    }
+    if (cap) break;
+  }
+  if (!cap) {
+    var vision = model && (model.indexOf('vision') >= 0 || model.indexOf('vl') >= 0 || model.indexOf('omni') >= 0);
+    var reasoning = model && (model.indexOf('reason') >= 0 || model.indexOf('think') >= 0);
+    cap = { vision: vision, reasoning: reasoning, description: model ? '未识别模型' : '', known: false };
+  }
+  var el = document.getElementById(prefix + '-cap');
+  if (!el) return;
+  var icon = cap.vision ? '👁️' : '📝';
+  var type = cap.vision ? '多模态 Multimodal' : '纯文本 Text Only';
+  var vBadge = cap.vision ? 'yes' : 'no';
+  var rBadge = cap.reasoning ? 'yes' : 'no';
+  el.innerHTML = '<div class="cap-icon">' + icon + '</div><div class="cap-info"><div class="cap-name">' + type + '</div><div class="cap-desc">' + (cap.description || '输入模型名后自动识别能力') + '</div></div><div class="cap-badges"><span class="badge ' + vBadge + '">Vision ' + (cap.vision ? '✓' : '✗') + '</span><span class="badge ' + rBadge + '">Reasoning ' + (cap.reasoning ? '✓' : '✗') + '</span></div>';
+}
+
+function checkMiMo() {
+  var modelVal = document.getElementById('m-model').value;
+  var isMimo = false;
+  for (var i = 0; i < PROVIDERS.length; i++) {
+    if (PROVIDERS[i].name === 'MiMo') {
+      for (var j = 0; j < PROVIDERS[i].models.length; j++) {
+        if (PROVIDERS[i].models[j].id === modelVal) { isMimo = true; break; }
+      }
+      break;
     }
   }
-  updateCap(prefix==='m'?'main':'vision');
+  var section = document.getElementById('local-search-section');
+  if (section) section.style.display = isMimo ? 'block' : 'none';
 }
 
-function onProviderChange(prefix){
-  const sel = document.getElementById(prefix+'-provider');
-  const opt = sel.options[sel.selectedIndex];
-  const url = opt.dataset.url;
-  if(url) document.getElementById(prefix+'-url').value=url;
-}
+renderModelList('m-list', 'm', '${settings.mainModel.modelName}', false);
+renderModelList('v-list', 'v', '${settings.visionModel.modelName}', true);
+updateCap('main');
+updateCap('vision');
 
-function initPicker(prefix, current, filterVision){
-  const picker = document.getElementById(prefix+'-pick');
-  picker.innerHTML = buildModelPicker(prefix, current.modelName, filterVision);
-}
+document.getElementById('m-model').addEventListener('input', function() { updateCap('main'); checkMiMo(); });
+document.getElementById('v-model').addEventListener('input', function() { updateCap('vision'); });
 
-initPicker('m', currentMain, false);
-initPicker('v', currentVision, true);
-
-function updateCap(which){
-  const prefix = which==='main' ? 'm' : 'v';
-  const model = document.getElementById(prefix+'-model').value;
-  const provider = document.getElementById(prefix+'-provider').value;
-  let cap;
-  for(const p of PROVIDERS){
-    for(const m of p.models){
-      if(m.id===model){ cap={vision:m.vision,reasoning:m.reasoning,description:m.description,known:true}; break; }
-    }
-    if(cap) break;
-  }
-  if(!cap){
-    const lower=(provider+' '+model).toLowerCase();
-    const vision=lower.includes('vision')||lower.includes('vl')||lower.includes('omni')||lower.includes('gpt-4o')||lower.includes('claude')||lower.includes('gemini');
-    const reasoning=lower.includes('reason')||lower.includes('think')||lower.includes('o1')||lower.includes('o3')||lower.includes('o4')||lower.includes('deepseek-reasoner');
-    cap={vision,reasoning,description:model?'未识别模型 — 根据名称推测':'',known:false};
-  }
-  const el=document.getElementById(prefix+'-cap');
-  el.innerHTML='<div class="cap-icon">'+(cap.vision?'👁️':'📝')+'</div><div class="cap-info"><div class="cap-name">'+(cap.vision?'多模态 Multimodal':'纯文本 Text Only')+'</div><div class="cap-desc">'+(cap.description||'输入模型名后自动识别能力')+'</div></div><div class="cap-badges"><span class="badge '+(cap.vision?'yes':'no')+'">Vision '+(cap.vision?'✓':'✗')+'</span><span class="badge '+(cap.reasoning?'yes':'no')+'">Reasoning '+(cap.reasoning?'✓':'✗')+'</span><span class="badge '+(cap.known?'y':'n')+'">'+(cap.known?'已知模型':'未知')+'</span></div>';
-}
-
-updateCap('main');updateCap('vision');
-
-function toggleLocalSearch(){
-  const checked=document.getElementById('local-search-toggle').checked;
-}
-function checkIfMiMo(){
-  const modelVal=document.getElementById('m-model').value;
-  const mimoProvider=PROVIDERS.find(p=>p.name==='MiMo');
-  const isMimo=mimoProvider?mimoProvider.models.some(m=>m.id===modelVal):false;
-  document.getElementById('local-search-section').style.display=isMimo?'block':'none';
-}
-document.getElementById('m-model')?.addEventListener('input', checkIfMiMo);
-document.getElementById('m-provider')?.addEventListener('input', function(){
-  setTimeout(checkIfMiMo, 100);
-});
-
-document.querySelectorAll('.tab').forEach(tab=>{
-  tab.addEventListener('click',()=>{
-    document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
-    document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+document.querySelectorAll('.tab').forEach(function(tab) {
+  tab.addEventListener('click', function() {
+    document.querySelectorAll('.tab').forEach(function(t) { t.classList.remove('active'); });
+    document.querySelectorAll('.page').forEach(function(p) { p.classList.remove('active'); });
     tab.classList.add('active');
-    document.getElementById('page-'+tab.dataset.page).classList.add('active');
+    document.getElementById('page-' + tab.getAttribute('data-page')).classList.add('active');
   });
 });
-document.querySelectorAll('input[type=password]').forEach(i=>{
-  i.addEventListener('focus',()=>{i.type='text';});
-  i.addEventListener('blur',()=>{if(!i.value)i.type='password';});
+
+document.querySelectorAll('input[type=password]').forEach(function(i) {
+  i.addEventListener('focus', function() { i.type = 'text'; });
+  i.addEventListener('blur', function() { if (!i.value) i.type = 'password'; });
 });
 
-async function saveAndRestart(){
-  const mimoP=PROVIDERS.find(p=>p.name==='MiMo');
-  const isMiMo=mimoP?mimoP.models.some(m=>m.id===document.getElementById('m-model').value):false;
-  const data={
-    clientType:currentClient,
-    mainModel:{providerName:document.getElementById('m-provider').value,apiKey:document.getElementById('m-key').value,baseUrl:document.getElementById('m-url').value,modelName:document.getElementById('m-model').value},
-    visionModel:{providerName:document.getElementById('v-provider').value,apiKey:document.getElementById('v-key').value,baseUrl:document.getElementById('v-url').value,modelName:document.getElementById('v-model').value},
-    localSearchEnabled:isMiMo?(document.getElementById('local-search-toggle').checked):false,
+async function saveAndRestart() {
+  var mimoP = null;
+  for (var i = 0; i < PROVIDERS.length; i++) {
+    if (PROVIDERS[i].name === 'MiMo') { mimoP = PROVIDERS[i]; break; }
+  }
+  var isMimo = false;
+  if (mimoP) {
+    var mv = document.getElementById('m-model').value;
+    for (var j = 0; j < mimoP.models.length; j++) {
+      if (mimoP.models[j].id === mv) { isMimo = true; break; }
+    }
+  }
+  var data = {
+    clientType: currentClient,
+    mainModel: {
+      providerName: document.getElementById('m-provider').value,
+      apiKey: document.getElementById('m-key').value,
+      baseUrl: document.getElementById('m-url').value,
+      modelName: document.getElementById('m-model').value
+    },
+    visionModel: {
+      providerName: document.getElementById('v-provider').value,
+      apiKey: document.getElementById('v-key').value,
+      baseUrl: document.getElementById('v-url').value,
+      modelName: document.getElementById('v-model').value
+    },
+    localSearchEnabled: isMimo ? document.getElementById('local-search-toggle').checked : false
   };
-  const msg=document.getElementById('save-msg');
-  try{
-    msg.textContent='💾 保存中...';msg.style.color='#e0af68';
-    const res=await fetch('/dashboard/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
-    const r=await res.json();
-    if(!r.ok){msg.textContent='❌ '+(r.error||'保存失败');msg.style.color='#f7768e';return;}
-    msg.textContent='🔄 正在重启...';msg.style.color='#e0af68';
-    await fetch('/dashboard/api/restart',{method:'POST'});
-    msg.textContent='✅ 已保存！服务正在重启...';msg.style.color='#73daca';
-  }catch(e){msg.textContent='❌ 网络错误';msg.style.color='#f7768e';}
+  var msg = document.getElementById('save-msg');
+  try {
+    msg.textContent = '💾 保存中...';
+    msg.style.color = '#e0af68';
+    var res = await fetch('/dashboard/api/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    var r = await res.json();
+    if (!r.ok) {
+      msg.textContent = '❌ ' + (r.error || '保存失败');
+      msg.style.color = '#f7768e';
+      return;
+    }
+    msg.textContent = '🔄 正在重启...';
+    msg.style.color = '#e0af68';
+    await fetch('/dashboard/api/restart', { method: 'POST' });
+    msg.textContent = '✅ 已保存！服务正在重启...';
+    msg.style.color = '#73daca';
+  } catch (e) {
+    msg.textContent = '❌ 网络错误';
+    msg.style.color = '#f7768e';
+  }
 }
 </script>
 </body></html>`;
 
   res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
   res.end(html);
-}
-
-function renderModelCard(label: string, id: string, model: { providerName: string; modelName: string; apiKey: string }, cap: { vision: boolean; reasoning: boolean; description: string; known: boolean }): string {
-  const displayName = model.modelName || "未配置";
-  const providerName = model.providerName || "未配置";
-  return '<div class="slot-card"><div class="slot-label ' + id + '">' + label + '</div><div class="slot-title">' + providerName + '</div><div class="slot-subtitle">' + displayName + '</div><div class="cap-box"><div class="cap-icon">' + (cap.vision ? '👁️' : '📝') + '</div><div class="cap-info"><div class="cap-name">' + (cap.vision ? 'Multimodal' : 'Text Only') + '</div><div class="cap-desc">' + cap.description + '</div></div><div class="cap-badges"><span class="badge ' + (cap.vision ? 'yes' : 'no') + '">Vision ' + (cap.vision ? '✓' : '✗') + '</span><span class="badge ' + (cap.reasoning ? 'yes' : 'no') + '">Reasoning ' + (cap.reasoning ? '✓' : '✗') + '</span><span class="badge ' + (cap.known ? 'y' : 'n') + '">' + (cap.known ? '已知模型' : '未知模型') + '</span></div></div></div>';
-}
-
-function renderModelSettings(label: string, prefix: string, model: { providerName: string; apiKey: string; baseUrl: string; modelName: string }, cap: { vision: boolean; reasoning: boolean; description: string; known: boolean }, subtitle: string): string {
-  return '<div class="slot-card"><div class="slot-label ' + (prefix === 'm' ? 'main' : 'vision') + '">' + label + '</div><div class="slot-subtitle">' + subtitle + '</div><div class="form-grid"><div class="form-group"><label class="form-label">Provider 名称</label><input class="input" id="' + prefix + '-provider" placeholder="选择厂商或手动输入" value="' + model.providerName + '" oninput="onProviderChange(\'' + prefix + '\')"></div><div class="form-group"><label class="form-label">Base URL</label><input class="input" id="' + prefix + '-url" placeholder="填入厂商 API 地址" value="' + model.baseUrl + '"></div><div class="form-group"><label class="form-label">API Key</label><input class="input" id="' + prefix + '-key" type="password" placeholder="sk-..." value="' + model.apiKey + '"></div><div class="form-group"><label class="form-label">模型名称</label><input class="input" id="' + prefix + '-model" placeholder="输入或从下方选择" value="' + model.modelName + '" oninput="updateCap(\'' + (prefix === 'm' ? 'main' : 'vision') + '\')"></div></div><div class="model-pick" id="' + prefix + '-pick"></div><div class="tip" style="margin-top:8px">💡 点击模型自动填充，也可手动输入模型名。Vision ✓ = 支持图片，Reasoning ✓ = 支持深度推理。</div><div id="' + prefix + '-cap" class="cap-box" style="margin-top:12px"></div></div>';
 }
