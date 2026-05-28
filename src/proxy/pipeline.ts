@@ -14,7 +14,7 @@ import {
   extractLocalToolCalls,
   executeLocalTools,
 } from "../tools/interceptor.js";
-import { loadSettings } from "../config/settings.js";
+import { loadSettings, isMiMoModel } from "../config/settings.js";
 
 export type Protocol = "openai" | "anthropic";
 
@@ -126,7 +126,7 @@ export async function executeWithToolInterception(
   }
 
   // Check if local search is enabled AND main model is MiMo
-  const isMiMo = settings.mainModel.providerName.toLowerCase().includes("mimo");
+  const isMiMo = isMiMoModel(settings.mainModel.modelName);
   const localSearchEnabled = settings.localSearchEnabled ?? false;
 
   if (!localSearchEnabled || !isMiMo || protocol !== "anthropic") {

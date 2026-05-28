@@ -170,3 +170,10 @@ export function detectModelCapabilities(modelName: string): {
   const reasoning = lower.includes("reason") || lower.includes("think") || lower.includes("o1") || lower.includes("o3") || lower.includes("o4") || lower.includes("deepseek-reasoner");
   return { vision, reasoning, description: "未识别的模型 — 根据名称推测能力", known: false };
 }
+
+// Check if a model ID belongs to MiMo
+export function isMiMoModel(modelId: string): boolean {
+  const mimoProvider = PROVIDERS.find(p => p.name === "MiMo");
+  if (!mimoProvider) return false;
+  return mimoProvider.models.some(m => m.id === modelId);
+}

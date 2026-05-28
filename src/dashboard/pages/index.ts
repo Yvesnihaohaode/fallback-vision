@@ -1,6 +1,6 @@
 import type { ServerResponse } from "node:http";
 import type { GatewayConfig } from "../../config/loader.js";
-import { loadSettings, detectModelCapabilities, PROVIDERS, type ProviderInfo } from "../../config/settings.js";
+import { loadSettings, detectModelCapabilities, PROVIDERS, isMiMoModel, type ProviderInfo } from "../../config/settings.js";
 
 const providersJSON = JSON.stringify(PROVIDERS);
 
@@ -9,7 +9,7 @@ export function sendIndex(cfg: GatewayConfig, res: ServerResponse): void {
   const mainCap = detectModelCapabilities(settings.mainModel.modelName);
   const visionCap = detectModelCapabilities(settings.visionModel.modelName);
   const isCodex = settings.clientType === "codex";
-  const isMiMo = settings.mainModel.providerName.toLowerCase().includes("mimo");
+  const isMiMo = isMiMoModel(settings.mainModel.modelName);
   const localSearch = settings.localSearchEnabled;
   const proxyUrl = isCodex
     ? `http://127.0.0.1:${cfg.port}/v1/chat/completions`
@@ -265,9 +265,15 @@ updateCap('main');updateCap('vision');
 function toggleLocalSearch(){
   const checked=document.getElementById('local-search-toggle').checked;
 }
-document.getElementById('m-provider')?.addEventListener('input',function(){
-  const isMimo=this.value.toLowerCase().includes('mimo');
+function checkIfMiMo(){
+  const modelVal=document.getElementById('m-model').value;
+  const mimoProvider=PROVIDERS.find(p=>p.name==='MiMo');
+  const isMimo=mimoProvider?mimoProvider.models.some(m=>m.id===modelVal):false;
   document.getElementById('local-search-section').style.display=isMimo?'block':'none';
+}
+document.getElementById('m-model')?.addEventListener('input', checkIfMiMo);
+document.getElementById('m-provider')?.addEventListener('input', function(){
+  setTimeout(checkIfMiMo, 100);
 });
 
 document.querySelectorAll('.tab').forEach(tab=>{
@@ -284,7 +290,8 @@ document.querySelectorAll('input[type=password]').forEach(i=>{
 });
 
 async function saveAndRestart(){
-  const isMiMo=document.getElementById('m-provider').value.toLowerCase().includes('mimo');
+  const mimoP=PROVIDERS.find(p=>p.name==='MiMo');
+  const isMiMo=mimoP?mimoP.models.some(m=>m.id===document.getElementById('m-model').value):false;
   const data={
     clientType:currentClient,
     mainModel:{providerName:document.getElementById('m-provider').value,apiKey:document.getElementById('m-key').value,baseUrl:document.getElementById('m-url').value,modelName:document.getElementById('m-model').value},
