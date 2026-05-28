@@ -1,0 +1,92 @@
+#!/bin/bash
+# Fallback Vision — 一键启动 Claude Code
+# 安装后全局可用: fv-claude
+
+FV_PORT=${FALLBACK_VISION_PORT:-8789}
+FV_RESTART_FLAG="$HOME/.fallback-vision/.restart"
+
+# 智能查找项目目录
+find_fv_dir() {
+  # 1. git clone — 脚本在项目 bin/ 下
+  local script_dir="$(cd "$(dirname "$0")/.." 2>/dev/null && pwd)"
+  if [ -f "$script_dir/dist/cli.js" ]; then
+    echo "$script_dir"
+    return
+  fi
+  
+  # 2. npm 全局安装
+  local npm_root="$(npm root -g 2>/dev/null)/fallback-vision"
+  if [ -d "$npm_root" ] && [ -f "$npm_root/dist/cli.js" ]; then
+    echo "$npm_root"
+    return
+  fi
+  
+  echo ""
+}
+
+FV_DIR="$(find_fv_dir)"
+
+if [ -z "$FV_DIR" ] || [ ! -d "$FV_DIR" ]; then
+  echo "❌ 找不到 Fallback Vision"
+  echo "请先安装: npm install -g fallback-vision"
+  echo "或: git clone https://github.com/Yvesnihaohaode/fallback-vision.git && cd fallback-vision && npm install"
+  exit 1
+fi
+
+mkdir -p "$HOME/.fallback-vision"
+rm -f "$FV_RESTART_FLAG"
+
+echo "⚡ Fallback Vision — Claude Code 模式"
+echo "📁 项目目录: $FV_DIR"
+echo ""
+
+# 启动服务
+if curl -s "http://127.0.0.1:${FV_PORT}/healthz" > /dev/null 2>&1; then
+  echo "✅ 服务已在运行"
+else
+  echo "🚀 启动服务..."
+  cd "$FV_DIR" && node dist/cli.js --port "$FV_PORT" &
+  sleep 2
+  if curl -s "http://127.0.0.1:${FV_PORT}/healthz" > /dev/null 2>&1; then
+    echo "✅ 服务启动成功"
+  else
+    echo "❌ 启动失败，请检查端口 ${FV_PORT}"
+    exit 1
+  fi
+fi
+
+# 自动打开浏览器
+echo "🌐 配置页面: http://127.0.0.1:${FV_PORT}/"
+command -v open &>/dev/null && open "http://127.0.0.1:${FV_PORT}/"
+command -v xdg-open &>/dev/null && xdg-open "http://127.0.0.1:${FV_PORT}/"
+
+echo ""
+echo "📋 在网页上配置好后，点击「保存并重启使用」"
+echo ""
+
+# 等待用户点击重启
+while true; do
+  if [ -f "$FV_RESTART_FLAG" ]; then
+    rm -f "$FV_RESTART_FLAG"
+    echo "🔄 正在重启..."
+    pkill -f "fallback-vision" 2>/dev/null
+    sleep 1
+    break
+  fi
+  curl -s "http://127.0.0.1:${FV_PORT}/healthz" > /dev/null 2>&1 || break
+  sleep 1
+done
+
+# 重新启动
+echo "🚀 重新启动服务..."
+cd "$FV_DIR" && node dist/cli.js --port "$FV_PORT" &
+sleep 2
+
+if curl -s "http://127.0.0.1:${FV_PORT}/healthz" > /dev/null 2>&1; then
+  echo "✅ 服务重启成功"
+  echo "🤖 启动 Claude Code..."
+  ANTHROPIC_BASE_URL="http://127.0.0.1:${FV_PORT}" exec claude
+else
+  echo "❌ 重启失败"
+  exit 1
+fi

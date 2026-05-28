@@ -1,0 +1,12 @@
+services:
+  fallback-vision:
+    build: .
+    ports:
+      - "8789:8789"
+    environment:
+      - MIMO_API_KEY=${MIMO_API_KEY:-}
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - FALLBACK_VISION_PORT=8789
+      - FALLBACK_VISION_HOST=0.0.0.0
+    restart: unless-stopped
