@@ -1,6 +1,8 @@
 import type { ServerResponse } from "node:http";
 import type { GatewayConfig } from "../../config/loader.js";
-import { loadSettings, detectModelCapabilities } from "../../config/settings.js";
+import { loadSettings, detectModelCapabilities, PROVIDERS, type ProviderInfo } from "../../config/settings.js";
+
+const providersJSON = JSON.stringify(PROVIDERS);
 
 export function sendIndex(cfg: GatewayConfig, res: ServerResponse): void {
   const settings = loadSettings();
@@ -41,10 +43,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
 .form-group{display:flex;flex-direction:column;gap:6px}
 .form-label{color:#565f89;font-size:12px;font-weight:500;text-transform:uppercase;letter-spacing:.5px}
-.input{background:#16161e;border:1px solid #2d2f3d;border-radius:8px;padding:10px 14px;color:#c0caf5;font-size:14px;width:100%;transition:border-color .2s}
-.input:focus{outline:none;border-color:#7aa2f7}
-.input.mono{font-family:'SF Mono',Monaco,Consolas,monospace}
-.input-url{font-size:12px;color:#565f89}
+.input,.select{background:#16161e;border:1px solid #2d2f3d;border-radius:8px;padding:10px 14px;color:#c0caf5;font-size:14px;width:100%;transition:border-color .2s}
+.input:focus,.select:focus{outline:none;border-color:#7aa2f7}
+.select{cursor:pointer;-webkit-appearance:none;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23565f89' d='M6 8L1 3h10z'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;padding-right:32px}
+.select option{background:#16161e;color:#c0caf5}
 .cap-box{display:flex;gap:10px;align-items:center;margin-top:16px;padding:12px 16px;background:#16161e;border-radius:8px}
 .cap-icon{font-size:20px}.cap-info{flex:1}.cap-name{font-size:14px;font-weight:500;color:#c0caf5}
 .cap-desc{font-size:12px;color:#565f89;margin-top:2px}
@@ -59,7 +61,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .client-btn{padding:10px 24px;border-radius:8px;cursor:pointer;font-size:14px;font-weight:500;color:#565f89;transition:all .2s;border:none;background:transparent;display:flex;align-items:center;gap:8px}
 .client-btn.active{background:#7aa2f7;color:#1a1b26}
 .client-btn:hover:not(.active){color:#a9b1d6}
-.client-icon{font-size:16px}
 .flow{display:flex;align-items:center;justify-content:center;gap:16px;padding:24px 0;flex-wrap:wrap}
 .flow-box{padding:12px 20px;border-radius:10px;font-size:13px;font-weight:500;text-align:center;min-width:120px}
 .flow-box.client{background:#1a2a4a;color:#7aa2f7;border:1px solid #2a3a5a}
@@ -67,145 +68,220 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .flow-box.model{background:#1a3a2a;color:#73daca;border:1px solid #2a4a3a}
 .flow-box.fallback{background:#2a1a3a;color:#bb9af7;border:1px solid #3a2a4a}
 .flow-arrow{color:#565f89;font-size:20px}
-.status-bar{display:flex;gap:16px;margin-bottom:24px;padding:16px 20px;background:#1a1b26;border:1px solid #2d2f3d;border-radius:10px;flex-wrap:wrap}
+.status-bar{display:flex;gap:16px;margin-bottom:24px;padding:16px 20px;background:#1a1b26;border:1px solid #2d2f3d;border-radius:10px}
 .status-item{display:flex;align-items:center;gap:8px;font-size:13px}
-.status-dot{width:8px;height:8px;border-radius:50%}
-.status-dot.on{background:#73daca}.status-dot.off{background:#f7768e}
-.proxy-box{background:#16161e;border:1px solid #2d2f3d;border-radius:8px;padding:12px 16px;font-family:'SF Mono',Monaco,Consolas,monospace;font-size:13px;color:#e0af68;margin:12px 0;word-break:break-all}
-.ft{text-align:center;padding:32px;color:#565f89;font-size:12px}
-/* Toggle switch */
-.toggle-row{display:flex;align-items:center;gap:12px;padding:16px 20px;background:#16161e;border:1px solid #2d2f3d;border-radius:10px;margin-top:16px}
-.toggle{position:relative;width:44px;height:24px;cursor:pointer}
-.toggle input{opacity:0;width:0;height:0}
-.toggle .slider{position:absolute;inset:0;background:#2d2f3d;border-radius:12px;transition:.3s}
-.toggle .slider:before{content:'';position:absolute;width:18px;height:18px;left:3px;bottom:3px;background:#565f89;border-radius:50%;transition:.3s}
-.toggle input:checked+.slider{background:#7aa2f7}
-.toggle input:checked+.slider:before{transform:translateX(20px);background:#1a1b26}
-.toggle-label{font-size:14px;color:#c0caf5;font-weight:500}
-.toggle-desc{font-size:12px;color:#565f89;margin-top:2px}
+.model-pick{display:flex;flex-direction:column;gap:8px;max-height:320px;overflow-y:auto;padding:8px;background:#16161e;border:1px solid #2d2f3d;border-radius:8px;margin-top:8px}
+.model-group-title{font-size:11px;font-weight:600;color:#7aa2f7;text-transform:uppercase;letter-spacing:1px;padding:8px 8px 4px;position:sticky;top:0;background:#16161e;z-index:1}
+.model-opt{padding:8px 12px;border-radius:6px;cursor:pointer;font-size:13px;color:#a9b1d6;transition:all .15s;display:flex;justify-content:space-between;align-items:center}
+.model-opt:hover{background:#1a2a4a;color:#c0caf5}
+.model-opt.selected{background:#1a2a4a;color:#7aa2f7}
+.model-opt .mname{font-weight:500}.model-opt .mtags{display:flex;gap:4px}
+.model-opt .mtag{font-size:10px;padding:2px 6px;border-radius:4px;background:#2d2f3d;color:#565f89}
+.model-opt .mtag.vis{background:#1a3a4a;color:#73daca}.model-opt .mtag.rea{background:#2a1a3a;color:#bb9af7}
+.local-toggle{display:flex;align-items:center;gap:12px;padding:12px 16px;background:#16161e;border-radius:8px;margin-top:12px}
+.local-toggle label{font-size:13px;color:#a9b1d6;cursor:pointer}
+.tip{color:#565f89;font-size:12px;margin-top:4px}
+#save-msg{margin-top:12px;font-size:13px;min-height:20px}
+@media(max-width:768px){.form-grid{grid-template-columns:1fr}.flow{flex-direction:column}}
 </style>
 </head>
 <body>
 <div class="hdr">
   <h1>⚡ Fallback Vision</h1>
-  <p>设置主模型和视觉模型，图片自动回退到视觉模型</p>
-  <div class="ver">v${cfg.version}</div>
+  <p>AI Gateway — 视觉回退路由</p>
+  <div class="ver">v0.1.7 · ${cfg.port} 端口</div>
 </div>
 <div class="ctr">
   <div class="tabs">
-    <div class="tab active" data-page="overview">Overview</div>
-    <div class="tab" data-page="settings">Models</div>
+    <div class="tab active" data-page="overview">概览</div>
+    <div class="tab" data-page="settings">设置</div>
   </div>
 
-  <!-- OVERVIEW -->
+  <!-- Overview Page -->
   <div id="page-overview" class="page active">
-    <div style="margin-bottom:20px">
-      <div style="color:#565f89;font-size:12px;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Client</div>
-      <div style="display:flex;align-items:center;gap:12px">
-        <span style="font-size:20px">${isCodex ? '🔧' : '🤖'}</span>
-        <span style="font-size:16px;font-weight:600;color:#c0caf5">${isCodex ? 'Codex' : 'Claude Code'}</span>
-        <span class="st" style="${isCodex ? 'background:#1a3a2a;color:#73daca' : 'background:#2a1a4a;color:#bb9af7'}">${isCodex ? 'OpenAI Protocol' : 'Anthropic Protocol'}</span>
-      </div>
-      <div style="margin-top:12px;color:#565f89;font-size:13px">Proxy URL:</div>
-      <div class="proxy-box">${proxyUrl}</div>
-    </div>
-
-    ${isMiMo && localSearch ? '<div style="margin-bottom:16px;padding:12px 16px;background:#1a2a1a;border:1px solid #2a4a2a;border-radius:8px;font-size:13px;color:#73daca">🔍 本地优化搜索已开启 — web_search/web_fetch 由 Fallback Vision 本地处理</div>' : ''}
-
     <div class="status-bar">
-      <div class="status-item"><div class="status-dot ${settings.mainModel.apiKey ? 'on' : 'off'}"></div>Main: ${settings.mainModel.providerName} / ${settings.mainModel.modelName}</div>
-      <div class="status-item"><div class="status-dot ${settings.visionModel.apiKey ? 'on' : 'off'}"></div>Vision: ${settings.visionModel.providerName} / ${settings.visionModel.modelName}</div>
+      <div class="status-item">状态 <span class="st on">运行中</span></div>
+      <div class="status-item">客户端 <strong>${isCodex ? "Codex" : "Claude Code"}</strong></div>
+      <div class="status-item">协议 <strong>${isCodex ? "OpenAI" : "Anthropic"}</strong></div>
     </div>
 
-    <h2 style="color:#c0caf5;font-size:18px;font-weight:600;margin-bottom:16px">How It Works</h2>
-    <div class="card" style="padding:0;overflow:hidden">
+    <div class="card">
+      <h3 style="margin-bottom:16px;color:#c0caf5">🔄 数据流</h3>
       <div class="flow">
-        <div class="flow-box client">📱 ${isCodex ? 'Codex' : 'Claude Code'}</div>
+        <div class="flow-box client">${isCodex ? "Codex" : "Claude Code"}</div>
         <div class="flow-arrow">→</div>
-        <div class="flow-box gw">⚡ Fallback Vision</div>
+        <div class="flow-box gw">Fallback Vision</div>
         <div class="flow-arrow">→</div>
-        <div class="flow-box model">🤖 主模型<br><span style="font-size:11px;opacity:.7">处理所有文字任务</span></div>
-      </div>
-      <div style="text-align:center;color:#565f89;font-size:12px;padding:0 0 8px">遇到图片时 ↓</div>
-      <div class="flow">
-        <div class="flow-box client">🖼️ 图片/文档/视频</div>
-        <div class="flow-arrow">→</div>
-        <div class="flow-box gw">⚡ Fallback Vision<br><span style="font-size:10px;opacity:.7">Step 1 → Step 2</span></div>
-        <div class="flow-arrow">→</div>
-        <div class="flow-box fallback">👁️ 视觉模型<br><span style="font-size:11px;opacity:.7">分析图片</span></div>
-        <div class="flow-arrow">→</div>
-        <div class="flow-box model">🤖 主模型<br><span style="font-size:11px;opacity:.7">基于描述推理</span></div>
+        <div class="flow-box model">主模型<br><small>${settings.mainModel.modelName || "未配置"}</small></div>
+        <div class="flow-arrow">←</div>
+        <div class="flow-box fallback">视觉模型<br><small>${settings.visionModel.modelName || "未配置"}</small></div>
       </div>
     </div>
 
-    <h2 style="color:#c0caf5;font-size:18px;font-weight:600;margin:24px 0 16px">Model Details</h2>
-    ${renderModelCard("MAIN MODEL", "main", settings.mainModel, mainCap)}
-    ${renderModelCard("VISION MODEL", "vision", settings.visionModel, visionCap)}
+    ${renderModelCard("主模型 — MAIN MODEL", "main", settings.mainModel, mainCap)}
+    ${renderModelCard("视觉模型 — VISION MODEL", "vision", settings.visionModel, visionCap)}
+
+    <div class="card">
+      <h3 style="margin-bottom:12px;color:#c0caf5">📌 使用方式</h3>
+      <p style="color:#a9b1d6;font-size:13px;line-height:1.8">
+        ${isCodex
+          ? `Codex 配置 <code style="background:#2d2f3d;padding:2px 6px;border-radius:4px;font-size:12px">base_url = "${proxyUrl}"</code>`
+          : `运行 <code style="background:#2d2f3d;padding:2px 6px;border-radius:4px;font-size:12px">ANTHROPIC_BASE_URL=${proxyUrl.replace("/v1/messages", "")} claude</code>`}
+      </p>
+    </div>
   </div>
 
-  <!-- SETTINGS -->
+  <!-- Settings Page -->
   <div id="page-settings" class="page">
-    <h2 style="color:#c0caf5;font-size:18px;font-weight:600;margin-bottom:8px">Configure Models</h2>
-    <p style="color:#565f89;font-size:14px;margin-bottom:24px">选择客户端类型，输入 Provider 名称、API Key、模型名称。</p>
-
-    <!-- Client type -->
-    <div style="margin-bottom:24px">
-      <div class="form-label" style="margin-bottom:8px">CLIENT TYPE</div>
+    <div class="card">
+      <h3 style="margin-bottom:16px;color:#c0caf5">客户端类型</h3>
       <div class="client-toggle">
-        <div class="client-btn ${isCodex ? 'active' : ''}" onclick="setClient('codex')" id="btn-codex"><span class="client-icon">🔧</span> Codex</div>
-        <div class="client-btn ${!isCodex ? 'active' : ''}" onclick="setClient('claude')" id="btn-claude"><span class="client-icon">🤖</span> Claude Code</div>
+        <button class="client-btn ${isCodex ? 'active' : ''}" onclick="setClient('codex')" id="btn-codex"><span class="client-icon">🔧</span>Codex (OpenAI)</button>
+        <button class="client-btn ${!isCodex ? 'active' : ''}" onclick="setClient('claude')" id="btn-claude"><span class="client-icon">💬</span>Claude Code (Anthropic)</button>
       </div>
-      <div id="client-info" style="color:#565f89;font-size:13px;margin-top:8px">
-        ${isCodex ? 'Codex 使用 OpenAI 协议。<code>/v1/chat/completions</code>' : 'Claude Code 使用 Anthropic Messages 协议。<code>/v1/messages</code>'}
-      </div>
+      <p class="tip">Codex 使用 OpenAI 协议 <code>/v1/chat/completions</code>。Claude Code 使用 Anthropic Messages 协议 <code>/v1/messages</code>。</p>
     </div>
 
-    <!-- Main model -->
-    ${renderModelSettings("MAIN MODEL — 主模型", "m", settings.mainModel, mainCap, "处理所有文字/代码任务，遇到图片时自动切换到视觉模型")}
+    ${renderModelSettings("主模型 — MAIN MODEL", "m", settings.mainModel, mainCap, "处理所有文字/代码任务，遇到图片时自动切换到视觉模型")}
+    ${renderModelSettings("视觉模型 — VISION MODEL", "v", settings.visionModel, visionCap, "只在需要识别图片/文档/视频时被调用")}
 
-    <!-- Local search toggle — only show when main model is MiMo -->
     <div id="local-search-section" style="display:${isMiMo ? 'block' : 'none'}">
-      <div class="toggle-row">
-        <label class="toggle">
+      <div class="card">
+        <h3 style="margin-bottom:8px;color:#c0caf5">🔍 本地优化搜索（MiMo 专属）</h3>
+        <p class="tip" style="margin-bottom:12px">MiMo 不支持 Claude Code 的 web_search / web_fetch。开启后由 Fallback Vision 本地处理搜索请求。</p>
+        <div class="local-toggle">
           <input type="checkbox" id="local-search-toggle" ${localSearch ? 'checked' : ''} onchange="toggleLocalSearch()">
-          <span class="slider"></span>
-        </label>
-        <div>
-          <div class="toggle-label">🔍 打开本地优化搜索</div>
-          <div class="toggle-desc">MiMo 不支持 Claude Code 的 web_search/web_fetch 工具。开启后由 Fallback Vision 本地处理搜索请求。</div>
+          <label for="local-search-toggle">开启本地优化搜索</label>
         </div>
       </div>
     </div>
 
-    <!-- Vision model -->
-    ${renderModelSettings("VISION MODEL — 视觉模型", "v", settings.visionModel, visionCap, "只在需要识别图片/文档/视频时被调用")}
-
-    <div style="margin-top:16px;display:flex;gap:12px;align-items:center">
-      <button class="btn btn-primary" onclick="saveAndRestart()">🚀 保存并重启使用</button>
-      <span id="save-msg" style="font-size:13px"></span>
+    <div style="margin-top:24px;display:flex;align-items:center;gap:16px">
+      <button class="btn btn-primary" onclick="saveAndRestart()">💾 保存并重启使用</button>
+      <div id="save-msg"></div>
     </div>
   </div>
 </div>
-<div class="ft">fallback-vision · Built with ❤️</div>
 
 <script>
-const KNOWN={"mimo-v2.5-pro":{v:false,r:true,d:"MiMo V2.5 Pro — 推理强，不支持图片"},"mimo-v2-pro":{v:false,r:true,d:"MiMo V2 Pro — 推理强，不支持图片"},"mimo-v2.5":{v:true,r:true,d:"MiMo V2.5 — 支持视觉 + 推理"},"mimo-v2-omni":{v:true,r:true,d:"MiMo V2 Omni — 支持视觉 + 音频 + 推理"},"mimo-v2-flash":{v:false,r:false,d:"MiMo V2 Flash — 轻量快速"},"deepseek-v4-pro":{v:false,r:true,d:"DeepSeek V4 Pro — 推理强，不支持图片"},"deepseek-v4-flash":{v:false,r:true,d:"DeepSeek V4 Flash — 快速推理"},"gpt-4o":{v:true,r:true,d:"GPT-4o — 多模态，支持图片 + 推理"},"gpt-4o-mini":{v:true,r:false,d:"GPT-4o Mini — 多模态，轻量"},"o1":{v:true,r:true,d:"OpenAI o1 — 推理模型，支持图片"},"o3":{v:true,r:true,d:"OpenAI o3 — 推理模型，支持图片"},"o4-mini":{v:true,r:true,d:"OpenAI o4-mini — 推理模型，支持图片"},"claude-sonnet-4-20250514":{v:true,r:true,d:"Claude Sonnet 4 — 多模态，强推理"},"claude-3-5-sonnet-20241022":{v:true,r:true,d:"Claude 3.5 Sonnet — 多模态，强推理"},"claude-3-5-haiku-20241022":{v:true,r:false,d:"Claude 3.5 Haiku — 多模态，快速"},"claude-3-opus-20240229":{v:true,r:true,d:"Claude 3 Opus — 多模态，最强推理"},"gemini-2.5-pro":{v:true,r:true,d:"Gemini 2.5 Pro — 多模态，强推理"},"gemini-2.5-flash":{v:true,r:true,d:"Gemini 2.5 Flash — 多模态，快速"},"qwen-vl-max":{v:true,r:false,d:"通义千问 VL Max — 多模态"},"qwen-max":{v:false,r:true,d:"通义千问 Max — 推理"}};
-let currentClient='${settings.clientType}';
+const PROVIDERS = ${providersJSON};
+let currentClient = '${settings.clientType}';
+const currentMain = ${JSON.stringify(settings.mainModel)};
+const currentVision = ${JSON.stringify(settings.visionModel)};
 
-function detect(n){const k=KNOWN[n];if(k)return{vision:k.v,reasoning:k.r,description:k.d,known:true};const l=n.toLowerCase();const v=l.includes("vision")||l.includes("vl")||l.includes("omni");const r=l.includes("reason")||l.includes("think")||l.includes("o1")||l.includes("o3");return{vision:v,reasoning:r,description:"未识别的模型",known:false}}
-function capHTML(name){const c=detect(name);return '<div class="cap-icon">'+(c.vision?'👁️':'📝')+'</div><div class="cap-info"><div class="cap-name">'+c.description+'</div></div><div class="cap-badges"><span class="badge '+(c.vision?'yes':'no')+'">Vision '+(c.vision?'✓':'✗')+'</span><span class="badge '+(c.reasoning?'yes':'no')+'">Reasoning '+(c.reasoning?'✓':'✗')+'</span><span class="badge '+(c.known?'y':'n')+'">'+(c.known?'已知模型':'未知模型')+'</span></div>';}
-function updateCap(slot){const name=document.getElementById(slot==='main'?'m-model':'v-model').value||'...';document.getElementById(slot==='main'?'m-cap':'v-cap').innerHTML=capHTML(name);}
-function setClient(type){currentClient=type;document.getElementById('btn-codex').className='client-btn'+(type==='codex'?' active':'');document.getElementById('btn-claude').className='client-btn'+(type==='claude'?' active':'');document.getElementById('client-info').innerHTML=type==='codex'?'Codex 使用 OpenAI 协议。<code>/v1/chat/completions</code>':'Claude Code 使用 Anthropic Messages 协议。<code>/v1/messages</code>';}
-function toggleLocalSearch(){const checked=document.getElementById('local-search-toggle').checked;document.getElementById('local-search-section').style.display=(document.getElementById('m-provider').value.toLowerCase().includes('mimo')||document.getElementById('m-model').value.toLowerCase().includes('mimo'))?'block':'none';}
+function setClient(c){
+  currentClient=c;
+  document.querySelectorAll('.client-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('btn-'+c).classList.add('active');
+}
 
-// Show/hide local search based on provider name
-document.getElementById('m-provider').addEventListener('input',function(){
-  const isMiMo=this.value.toLowerCase().includes('mimo');
-  document.getElementById('local-search-section').style.display=isMiMo?'block':'none';
+function buildProviderSelect(prefix, currentProvider){
+  let html = '<option value="">-- 选择厂商或手动输入 --</option>';
+  for(const p of PROVIDERS){
+    if(p.name==='其他') continue;
+    const sel = currentProvider===p.name ? 'selected' : '';
+    html += '<option value="'+p.name+'" data-url="'+p.baseUrl+'" '+sel+'>'+p.name+'</option>';
+  }
+  html += '<option value="__custom">手动输入...</option>';
+  return html;
+}
+
+function buildModelPicker(prefix, currentModel, filterVision){
+  let html = '';
+  for(const p of PROVIDERS){
+    const models = filterVision ? p.models.filter(m=>m.vision) : p.models;
+    if(models.length===0) continue;
+    html += '<div class="model-group-title">'+p.name+'</div>';
+    for(const m of models){
+      const sel = currentModel===m.id ? ' selected' : '';
+      const tags = [];
+      if(m.vision) tags.push('<span class="mtag vis">Vision ✓</span>');
+      if(m.reasoning) tags.push('<span class="mtag rea">Reasoning ✓</span>');
+      html += '<div class="model-opt'+sel+'" data-model="'+m.id+'" data-provider="'+p.name+'" data-url="'+p.baseUrl+'" onclick="pickModel(this,\''+prefix+'\')" title="'+m.description+'"><span class="mname">'+m.id+'</span><span class="mtags">'+tags.join('')+'</span></div>';
+    }
+  }
+  html += '<div class="model-group-title">其他</div>';
+  html += '<div class="model-opt" data-model="__custom" onclick="pickModel(this,\''+prefix+'\')"><span class="mname">手动输入模型名...</span></div>';
+  return html;
+}
+
+function pickModel(el, prefix){
+  el.parentElement.querySelectorAll('.model-opt').forEach(o=>o.classList.remove('selected'));
+  el.classList.add('selected');
+  const model = el.dataset.model;
+  const provider = el.dataset.provider || '';
+  const url = el.dataset.url || '';
+  if(model==='__custom'){
+    document.getElementById(prefix+'-model').value='';
+    document.getElementById(prefix+'-model').focus();
+  } else {
+    document.getElementById(prefix+'-model').value=model;
+    if(provider){
+      document.getElementById(prefix+'-provider').value=provider;
+      if(url) document.getElementById(prefix+'-url').value=url;
+    }
+  }
+  updateCap(prefix==='m'?'main':'vision');
+}
+
+function onProviderChange(prefix){
+  const sel = document.getElementById(prefix+'-provider');
+  const opt = sel.options[sel.selectedIndex];
+  const url = opt.dataset.url;
+  if(url) document.getElementById(prefix+'-url').value=url;
+}
+
+function initPicker(prefix, current, filterVision){
+  const picker = document.getElementById(prefix+'-pick');
+  picker.innerHTML = buildModelPicker(prefix, current.modelName, filterVision);
+}
+
+initPicker('m', currentMain, false);
+initPicker('v', currentVision, true);
+
+function updateCap(which){
+  const prefix = which==='main' ? 'm' : 'v';
+  const model = document.getElementById(prefix+'-model').value;
+  const provider = document.getElementById(prefix+'-provider').value;
+  let cap;
+  for(const p of PROVIDERS){
+    for(const m of p.models){
+      if(m.id===model){ cap={vision:m.vision,reasoning:m.reasoning,description:m.description,known:true}; break; }
+    }
+    if(cap) break;
+  }
+  if(!cap){
+    const lower=(provider+' '+model).toLowerCase();
+    const vision=lower.includes('vision')||lower.includes('vl')||lower.includes('omni')||lower.includes('gpt-4o')||lower.includes('claude')||lower.includes('gemini');
+    const reasoning=lower.includes('reason')||lower.includes('think')||lower.includes('o1')||lower.includes('o3')||lower.includes('o4')||lower.includes('deepseek-reasoner');
+    cap={vision,reasoning,description:model?'未识别模型 — 根据名称推测':'',known:false};
+  }
+  const el=document.getElementById(prefix+'-cap');
+  el.innerHTML='<div class="cap-icon">'+(cap.vision?'👁️':'📝')+'</div><div class="cap-info"><div class="cap-name">'+(cap.vision?'多模态 Multimodal':'纯文本 Text Only')+'</div><div class="cap-desc">'+(cap.description||'输入模型名后自动识别能力')+'</div></div><div class="cap-badges"><span class="badge '+(cap.vision?'yes':'no')+'">Vision '+(cap.vision?'✓':'✗')+'</span><span class="badge '+(cap.reasoning?'yes':'no')+'">Reasoning '+(cap.reasoning?'✓':'✗')+'</span><span class="badge '+(cap.known?'y':'n')+'">'+(cap.known?'已知模型':'未知')+'</span></div>';
+}
+
+updateCap('main');updateCap('vision');
+
+function toggleLocalSearch(){
+  const checked=document.getElementById('local-search-toggle').checked;
+}
+document.getElementById('m-provider')?.addEventListener('input',function(){
+  const isMimo=this.value.toLowerCase().includes('mimo');
+  document.getElementById('local-search-section').style.display=isMimo?'block':'none';
 });
 
-document.querySelectorAll('.tab').forEach(tab=>{tab.addEventListener('click',()=>{document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));tab.classList.add('active');document.getElementById('page-'+tab.dataset.page).classList.add('active');});});
-document.querySelectorAll('input[type=password]').forEach(i=>{i.addEventListener('focus',()=>{i.type='text';});i.addEventListener('blur',()=>{if(!i.value)i.type='password';});});
+document.querySelectorAll('.tab').forEach(tab=>{
+  tab.addEventListener('click',()=>{
+    document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+    document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById('page-'+tab.dataset.page).classList.add('active');
+  });
+});
+document.querySelectorAll('input[type=password]').forEach(i=>{
+  i.addEventListener('focus',()=>{i.type='text';});
+  i.addEventListener('blur',()=>{if(!i.value)i.type='password';});
+});
 
 async function saveAndRestart(){
   const isMiMo=document.getElementById('m-provider').value.toLowerCase().includes('mimo');
@@ -223,7 +299,7 @@ async function saveAndRestart(){
     if(!r.ok){msg.textContent='❌ '+(r.error||'保存失败');msg.style.color='#f7768e';return;}
     msg.textContent='🔄 正在重启...';msg.style.color='#e0af68';
     await fetch('/dashboard/api/restart',{method:'POST'});
-    msg.textContent='✅ 已保存！服务正在重启，即将自动打开客户端...';msg.style.color='#73daca';
+    msg.textContent='✅ 已保存！服务正在重启...';msg.style.color='#73daca';
   }catch(e){msg.textContent='❌ 网络错误';msg.style.color='#f7768e';}
 }
 </script>
@@ -234,9 +310,11 @@ async function saveAndRestart(){
 }
 
 function renderModelCard(label: string, id: string, model: { providerName: string; modelName: string; apiKey: string }, cap: { vision: boolean; reasoning: boolean; description: string; known: boolean }): string {
-  return `<div class="slot-card"><div class="slot-label ${id}">${label}</div><div class="slot-title">${model.providerName}</div><div class="slot-subtitle">${model.modelName}</div><div class="cap-box"><div class="cap-icon">${cap.vision ? '👁️' : '📝'}</div><div class="cap-info"><div class="cap-name">${cap.vision ? 'Multimodal' : 'Text Only'}</div><div class="cap-desc">${cap.description}</div></div><div class="cap-badges"><span class="badge ${cap.vision ? 'yes' : 'no'}">Vision ${cap.vision ? '✓' : '✗'}</span><span class="badge ${cap.reasoning ? 'yes' : 'no'}">Reasoning ${cap.reasoning ? '✓' : '✗'}</span><span class="badge ${cap.known ? 'y' : 'n'}">${cap.known ? '已知模型' : '未知模型'}</span></div></div></div>`;
+  const displayName = model.modelName || "未配置";
+  const providerName = model.providerName || "未配置";
+  return '<div class="slot-card"><div class="slot-label ' + id + '">' + label + '</div><div class="slot-title">' + providerName + '</div><div class="slot-subtitle">' + displayName + '</div><div class="cap-box"><div class="cap-icon">' + (cap.vision ? '👁️' : '📝') + '</div><div class="cap-info"><div class="cap-name">' + (cap.vision ? 'Multimodal' : 'Text Only') + '</div><div class="cap-desc">' + cap.description + '</div></div><div class="cap-badges"><span class="badge ' + (cap.vision ? 'yes' : 'no') + '">Vision ' + (cap.vision ? '✓' : '✗') + '</span><span class="badge ' + (cap.reasoning ? 'yes' : 'no') + '">Reasoning ' + (cap.reasoning ? '✓' : '✗') + '</span><span class="badge ' + (cap.known ? 'y' : 'n') + '">' + (cap.known ? '已知模型' : '未知模型') + '</span></div></div></div>';
 }
 
 function renderModelSettings(label: string, prefix: string, model: { providerName: string; apiKey: string; baseUrl: string; modelName: string }, cap: { vision: boolean; reasoning: boolean; description: string; known: boolean }, subtitle: string): string {
-  return `<div class="slot-card"><div class="slot-label ${prefix === 'm' ? 'main' : 'vision'}">${label}</div><div class="slot-subtitle">${subtitle}</div><div class="form-grid"><div class="form-group"><label class="form-label">Provider 名称</label><input class="input" id="${prefix}-provider" placeholder="DeepSeek / OpenAI / MiMo / Claude ..." value="${model.providerName}"></div><div class="form-group"><label class="form-label">Base URL</label><input class="input input-url mono" id="${prefix}-url" placeholder="https://api.deepseek.com/v1" value="${model.baseUrl}"></div><div class="form-group"><label class="form-label">API Key</label><input class="input mono" id="${prefix}-key" type="password" placeholder="sk-..." value="${model.apiKey}"></div><div class="form-group"><label class="form-label">模型名称</label><input class="input mono" id="${prefix}-model" placeholder="deepseek-v4-pro / gpt-4o ..." value="${model.modelName}" oninput="updateCap('${prefix === 'm' ? 'main' : 'vision'}')"></div></div><div id="${prefix}-cap" class="cap-box" style="margin-top:16px"></div></div>`;
+  return '<div class="slot-card"><div class="slot-label ' + (prefix === 'm' ? 'main' : 'vision') + '">' + label + '</div><div class="slot-subtitle">' + subtitle + '</div><div class="form-grid"><div class="form-group"><label class="form-label">Provider 名称</label><input class="input" id="' + prefix + '-provider" placeholder="选择厂商或手动输入" value="' + model.providerName + '" oninput="onProviderChange(\'' + prefix + '\')"></div><div class="form-group"><label class="form-label">Base URL</label><input class="input" id="' + prefix + '-url" placeholder="填入厂商 API 地址" value="' + model.baseUrl + '"></div><div class="form-group"><label class="form-label">API Key</label><input class="input" id="' + prefix + '-key" type="password" placeholder="sk-..." value="' + model.apiKey + '"></div><div class="form-group"><label class="form-label">模型名称</label><input class="input" id="' + prefix + '-model" placeholder="输入或从下方选择" value="' + model.modelName + '" oninput="updateCap(\'' + (prefix === 'm' ? 'main' : 'vision') + '\')"></div></div><div class="model-pick" id="' + prefix + '-pick"></div><div class="tip" style="margin-top:8px">💡 点击模型自动填充，也可手动输入模型名。Vision ✓ = 支持图片，Reasoning ✓ = 支持深度推理。</div><div id="' + prefix + '-cap" class="cap-box" style="margin-top:12px"></div></div>';
 }
