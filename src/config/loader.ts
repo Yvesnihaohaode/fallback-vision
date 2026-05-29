@@ -69,7 +69,7 @@ export function loadConfig(args: { port?: number; host?: string; verbose?: boole
   return {
     host,
     port,
-    version: "0.1.15",
+    version: "0.2.0",
     registry,
     routingStrategy: "balanced",
     dashboardEnabled: process.env.FALLBACK_VISION_NO_DASHBOARD !== "1",
