@@ -15,7 +15,6 @@ export interface AppSettings {
   clientType: ClientType;
   mainModel: ModelSlot;
   visionModel: ModelSlot;
-  localSearchEnabled: boolean;
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -32,7 +31,6 @@ const DEFAULT_SETTINGS: AppSettings = {
     baseUrl: "",
     modelName: "",
   },
-  localSearchEnabled: false,
 };
 
 function getSettingsPath(): string {
@@ -49,7 +47,6 @@ export function loadSettings(): AppSettings {
       clientType: parsed.clientType ?? DEFAULT_SETTINGS.clientType,
       mainModel: { ...DEFAULT_SETTINGS.mainModel, ...parsed.mainModel },
       visionModel: { ...DEFAULT_SETTINGS.visionModel, ...parsed.visionModel },
-      localSearchEnabled: parsed.localSearchEnabled ?? DEFAULT_SETTINGS.localSearchEnabled,
     };
   } catch {
     return structuredClone(DEFAULT_SETTINGS);

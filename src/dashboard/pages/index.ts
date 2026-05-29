@@ -150,12 +150,7 @@ input:focus{outline:none;border-color:#7aa2f7}
 
     <div id="ls-section" style="display:${isMiMo ? 'block' : 'none'}">
       <div class="card">
-        <h3 class="h3">🔍 Local Search (MiMo Only)</h3>
-        <p class="tip">MiMo doesn't support web_search/web_fetch. Enable to handle search locally via DuckDuckGo.</p>
-        <div class="cb2">
-          <input type="checkbox" id="ls" ${settings.localSearchEnabled ? 'checked' : ''}>
-          <label for="ls">Enable local search</label>
-        </div>
+        <p style="color:#73daca;font-size:13px">✅ 因为 Claude Code 不兼容 MiMo 搜索，本程序已作出适配。工具定义会自动透传给上游模型，Claude Code 本地执行搜索。</p>
       </div>
     </div>
 
@@ -298,7 +293,7 @@ async function saveAndRestart() {
       baseUrl: document.getElementById('vu').value,
       modelName: document.getElementById('vm').value
     },
-    localSearchEnabled: found ? document.getElementById('ls').checked : false
+    localSearchEnabled: false
   };
   try {
     msg.textContent = 'Saving...';

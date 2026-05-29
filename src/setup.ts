@@ -122,14 +122,7 @@ async function main() {
   const visionUrl = await ask(`Base URL [${settings.visionModel.baseUrl}]: `);
   if (visionUrl) settings.visionModel.baseUrl = visionUrl;
 
-  // Step 4: Local search (MiMo only)
-  if (settings.mainModel.providerName.toLowerCase().includes("mimo")) {
-    console.log("\nStep 4/4: 本地优化搜索（MiMo 专属）");
-    console.log("  MiMo 不支持原生 web_search/web_fetch。");
-    console.log("  开启后由 Fallback Vision 本地处理搜索请求。");
-    const localSearch = await ask("开启本地优化搜索？[y/N]: ");
-    settings.localSearchEnabled = localSearch.toLowerCase() === "y";
-  }
+  // Note: Claude Code + MiMo compatibility handled by tool passthrough
 
   saveSettings(settings);
   console.log("\n✅ 配置已保存到 ~/.fallback-vision/settings.json\n");

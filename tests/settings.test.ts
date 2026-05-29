@@ -24,19 +24,16 @@ describe("Settings", () => {
     expect(settings).toHaveProperty("clientType");
     expect(settings).toHaveProperty("mainModel");
     expect(settings).toHaveProperty("visionModel");
-    expect(settings).toHaveProperty("localSearchEnabled");
   });
 
   it("saveSettings writes file and loadSettings reads it back", () => {
     const settings = loadSettings();
     settings.clientType = "claude";
-    settings.localSearchEnabled = true;
     settings.mainModel.providerName = "TestProvider";
     saveSettings(settings);
 
     const reloaded = loadSettings();
     expect(reloaded.clientType).toBe("claude");
-    expect(reloaded.localSearchEnabled).toBe(true);
     expect(reloaded.mainModel.providerName).toBe("TestProvider");
   });
 });

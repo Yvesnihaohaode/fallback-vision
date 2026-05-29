@@ -3,7 +3,7 @@ import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import type { GatewayConfig } from "./config/loader.js";
-import { executePipeline, executeWithToolInterception, type Protocol } from "./proxy/pipeline.js";
+import { executePipeline, type Protocol } from "./proxy/pipeline.js";
 import { log } from "./util/logger.js";
 import { handleDashboard } from "./dashboard/handler.js";
 
@@ -21,7 +21,7 @@ export function startServer(cfg: GatewayConfig): Server {
       return sendJson(res, 200, { ok: true, name: "fallback-vision" });
     }
 
-    // Restart endpoint — writes flag file, then server exits
+    // Restart endpoint
     if (req.method === "POST" && url === "/dashboard/api/restart") {
       const flagPath = join(homedir(), ".fallback-vision", ".restart");
       try {
@@ -29,7 +29,6 @@ export function startServer(cfg: GatewayConfig): Server {
         log.info("restart signal sent, shutting down...");
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ ok: true }));
-        // Give response time to send, then exit
         setTimeout(() => process.exit(0), 200);
       } catch (err) {
         res.writeHead(500, { "Content-Type": "application/json" });
@@ -79,9 +78,9 @@ async function handleRequest(
 
   log.info(`incoming ${protocol}`, { model });
 
-  const result = protocol === "anthropic"
-    ? await executeWithToolInterception(cfg.registry, body, protocol, cfg.version)
-    : await executePipeline(cfg.registry, body, protocol, cfg.version);
+  // All requests go through the unified pipeline
+  // Tools are passed through as-is to the upstream model
+  const result = await executePipeline(cfg.registry, body, protocol, cfg.version);
 
   log.info("request completed", {
     protocol: result.protocol,

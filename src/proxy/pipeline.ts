@@ -3,18 +3,11 @@ import type { ProviderRegistry } from "../providers/registry.js";
 import { detectImages } from "../routing/capability.js";
 import { callUpstream } from "./upstream.js";
 import {
-  hasAnthropicImages,
   chatToAnthropic,
   type AnthropicRequest,
   type AnthropicContentBlock,
   type AnthropicMessage,
 } from "../translate/anthropic.js";
-import {
-  hasLocalTools,
-  extractLocalToolCalls,
-  executeLocalTools,
-} from "../tools/interceptor.js";
-import { loadSettings, isMiMoModel } from "../config/settings.js";
 
 export type Protocol = "openai" | "anthropic";
 
@@ -28,9 +21,6 @@ interface PipelineResult {
   mainModelId: string;
   protocol: Protocol;
 }
-
-const MAX_TOOL_ROUNDS = 3;
-const TOOL_TIMEOUT_MS = 30_000;
 
 // ============================================================================
 // Main Pipeline
@@ -105,114 +95,6 @@ export async function executePipeline(
     response, latencyMs: visionLatencyMs + mainLatencyMs,
     visionLatencyMs, mainLatencyMs, usedVision: true,
     visionModelId, mainModelId, protocol,
-  };
-}
-
-// ============================================================================
-// Tool Interception — only when main model is MiMo + user enabled the toggle
-// ============================================================================
-
-export async function executeWithToolInterception(
-  registry: ProviderRegistry,
-  body: unknown,
-  protocol: Protocol,
-  version: string
-): Promise<PipelineResult> {
-  const settings = loadSettings();
-  const mainProvider = registry.get("main");
-
-  if (!mainProvider?.isAvailable()) {
-    throw new Error("main model not configured");
-  }
-
-  // Check if local search is enabled AND main model is MiMo
-  const isMiMo = isMiMoModel(settings.mainModel.modelName);
-  const localSearchEnabled = settings.localSearchEnabled ?? false;
-
-  if (!localSearchEnabled || !isMiMo || protocol !== "anthropic") {
-    // Not MiMo or not enabled → normal pipeline
-    return executePipeline(registry, body, protocol, version);
-  }
-
-  const req = body as AnthropicRequest;
-  if (!hasLocalTools(req.tools)) {
-    return executePipeline(registry, body, protocol, version);
-  }
-
-  const mainUrl = mainProvider.config.baseUrl;
-  const mainKey = mainProvider.config.apiKey;
-  const mainModelId = mainProvider.config.defaultModel;
-
-  log.info("[tool-intercept] MiMo + local search enabled, intercepting tools");
-
-  const filteredTools = (req.tools ?? []).filter((t) => {
-    return !["web_search", "web_fetch", "WebSearch"].includes(t.name);
-  });
-
-  let currentMessages: AnthropicMessage[] = [...req.messages];
-  let currentTools = filteredTools.length > 0 ? filteredTools : undefined;
-
-  for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
-    log.info(`[tool-intercept] round ${round + 1}`);
-
-    try {
-      const sendBody: AnthropicRequest = {
-        model: req.model,
-        max_tokens: req.max_tokens,
-        system: req.system,
-        messages: currentMessages,
-        tools: currentTools,
-        stream: false,
-      };
-
-      const res = await callUpstream(
-        { baseUrl: mainUrl, apiKey: mainKey, model: mainProvider.getModel(mainModelId)!, userAgent: `fallback-vision/${version}`, timeoutMs: TOOL_TIMEOUT_MS },
-        sendBody, "/messages"
-      );
-      const response = JSON.parse(await res.text());
-
-      const localCalls = extractLocalToolCalls(response);
-      if (localCalls.length === 0) {
-        return {
-          response: chatToAnthropic(response, mainModelId),
-          latencyMs: 0, visionLatencyMs: 0, mainLatencyMs: 0,
-          usedVision: false, visionModelId: "", mainModelId, protocol,
-        };
-      }
-
-      log.info(`[tool-intercept] executing ${localCalls.length} local tool(s)`);
-      const toolResults = await executeLocalTools(localCalls);
-
-      currentMessages = [
-        ...currentMessages,
-        response as AnthropicMessage,
-        {
-          role: "user",
-          content: toolResults.map((tr) => ({
-            type: "tool_result" as const,
-            tool_use_id: tr.tool_use_id,
-            content: tr.content,
-          })),
-        },
-      ];
-    } catch (err) {
-      log.error(`[tool-intercept] round ${round + 1} failed: ${(err as Error).message}`);
-      // Timeout or error → break loop, return what we have
-      break;
-    }
-  }
-
-  // Final attempt without tool loop
-  const lastRes = await callUpstream(
-    { baseUrl: mainUrl, apiKey: mainKey, model: mainProvider.getModel(mainModelId)!, userAgent: `fallback-vision/${version}`, timeoutMs: TOOL_TIMEOUT_MS },
-    { model: req.model, max_tokens: req.max_tokens, system: req.system, messages: currentMessages, tools: currentTools, stream: false },
-    "/messages"
-  );
-  const lastResponse = JSON.parse(await lastRes.text());
-  return {
-    response: chatToAnthropic(lastResponse, mainModelId),
-    latencyMs: 0, visionLatencyMs: 0, mainLatencyMs: 0,
-    usedVision: false, visionModelId: "", mainModelId, protocol,
   };
 }
 
@@ -310,4 +192,17 @@ function stripImages(msg: unknown): unknown {
   const textParts = m.content.filter((p: { type?: string }) => p.type === "text" || p.type === "input_text");
   if (textParts.length === 0) return null;
   return { ...m, content: textParts };
+}
+
+function hasAnthropicImages(body: unknown): boolean {
+  const b = body as AnthropicRequest;
+  if (!Array.isArray(b.messages)) return false;
+  for (const msg of b.messages) {
+    if (typeof msg.content === "string") continue;
+    if (!Array.isArray(msg.content)) continue;
+    for (const block of msg.content) {
+      if (block.type === "image") return true;
+    }
+  }
+  return false;
 }
