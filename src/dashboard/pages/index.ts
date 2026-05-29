@@ -188,7 +188,7 @@ function buildList(id, prefix, cur, visOnly) {
   if (!el) return;
   var h = '';
   for (var i = 0; i < P.length; i++) {
-    if (P[i].name === 'Other') continue;
+    if (P[i].name === '其他') continue;
     var models = visOnly ? P[i].models.filter(function(m) { return m.vision; }) : P[i].models;
     if (models.length === 0) continue;
     h += '<div class="mg">' + P[i].name + '</div>';
