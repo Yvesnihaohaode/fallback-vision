@@ -3,7 +3,9 @@ import type { ProviderRegistry } from "../providers/registry.js";
 import { detectImages } from "../routing/capability.js";
 import { callUpstream } from "./upstream.js";
 import {
+  anthropicToChat,
   chatToAnthropic,
+  hasAnthropicImages,
   type AnthropicRequest,
   type AnthropicContentBlock,
   type AnthropicMessage,
@@ -50,13 +52,23 @@ export async function executePipeline(
   // No images → direct to main
   if (!hasImages || !visionProvider?.isAvailable()) {
     const start = Date.now();
-    const path = protocol === "anthropic" ? "/messages" : "/chat/completions";
+    
+    // Convert Anthropic format to OpenAI format for upstream
+    let upstreamBody: unknown;
+    if (protocol === "anthropic") {
+      upstreamBody = anthropicToChat(body as AnthropicRequest);
+    } else {
+      upstreamBody = body;
+    }
+    
     const res = await callUpstream(
       { baseUrl: mainUrl, apiKey: mainKey, model: mainProvider.getModel(mainModelId)!, userAgent: `fallback-vision/${version}` },
-      body, path
+      upstreamBody, "/chat/completions"
     );
     const latencyMs = Date.now() - start;
     const rawResponse = JSON.parse(await res.text());
+    
+    // Convert response back to Anthropic format if needed
     const response = protocol === "anthropic" ? chatToAnthropic(rawResponse, mainModelId) : rawResponse;
     return { response, latencyMs, visionLatencyMs: 0, mainLatencyMs: latencyMs, usedVision: false, visionModelId: "", mainModelId, protocol };
   }
@@ -81,10 +93,18 @@ export async function executePipeline(
   log.info(`[pipeline] step 2: question + description → main model ${mainModelId}`);
   const step2Start = Date.now();
   const mainPrompt = buildMainPrompt(body, visionDescription, protocol);
-  const mainPath = protocol === "anthropic" ? "/messages" : "/chat/completions";
+  
+  // Convert main prompt to OpenAI format if needed
+  let upstreamMainPrompt: unknown;
+  if (protocol === "anthropic") {
+    upstreamMainPrompt = anthropicToChat(mainPrompt as AnthropicRequest);
+  } else {
+    upstreamMainPrompt = mainPrompt;
+  }
+  
   const mainRes = await callUpstream(
     { baseUrl: mainUrl, apiKey: mainKey, model: mainProvider.getModel(mainModelId)!, userAgent: `fallback-vision/${version}` },
-    mainPrompt, mainPath
+    upstreamMainPrompt, "/chat/completions"
   );
   const rawMainResponse = JSON.parse(await mainRes.text());
   const mainLatencyMs = Date.now() - step2Start;
@@ -192,17 +212,4 @@ function stripImages(msg: unknown): unknown {
   const textParts = m.content.filter((p: { type?: string }) => p.type === "text" || p.type === "input_text");
   if (textParts.length === 0) return null;
   return { ...m, content: textParts };
-}
-
-function hasAnthropicImages(body: unknown): boolean {
-  const b = body as AnthropicRequest;
-  if (!Array.isArray(b.messages)) return false;
-  for (const msg of b.messages) {
-    if (typeof msg.content === "string") continue;
-    if (!Array.isArray(msg.content)) continue;
-    for (const block of msg.content) {
-      if (block.type === "image") return true;
-    }
-  }
-  return false;
 }
