@@ -1,6 +1,6 @@
 {
   "name": "fallback-vision",
-  "version": "0.5.0",
+  "version": "0.5.5",
   "description": "AI Gateway with intelligent visual fallback routing",
   "type": "module",
   "main": "dist/index.js",
@@ -37,9 +37,12 @@
   "files": [
     "dist",
     "bin",
+    "docs",
+    "CHANGELOG.md",
     "Dockerfile",
     "docker-compose.yml",
-    "README.md"
+    "README.md",
+    "AGENTS.md"
   ],
   "devDependencies": {
     "typescript": "^5.5.0",

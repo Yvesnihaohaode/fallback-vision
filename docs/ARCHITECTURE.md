@@ -1,5 +1,7 @@
 # Fallback Vision — 架构文档
 
+> 最后更新: 2026-05-31 (v0.5.4)
+
 ## 核心理念
 
 用户设置两个模型：
@@ -39,6 +41,39 @@ Step 2: 原始问题 + 图片描述 → 主模型 → 完整回答
 
 直接 → 主模型（单步，无视觉参与）
 
+## 协议架构
+
+```
+Claude Code ──(Anthropic Messages)──→ Fallback Vision ──(OpenAI)──→ 主模型
+Codex       ──(OpenAI)──────────────→ Fallback Vision ──(OpenAI)──→ 主模型
+```
+
+Fallback Vision 自动检测客户端类型：
+- 收到 `/v1/messages` → Anthropic 模式（Claude Code）
+- 收到 `/v1/chat/completions` → OpenAI 模式（Codex）
+
+## cc-switch 集成
+
+Fallback Vision 与 cc-switch 可以共存，通过 fv-claude / fv-stop 切换：
+
+```
+fv-claude → 备份 cc-switch 配置 → 写入 FV 配置 → 启动服务器 → 打开 claude
+fv-stop   → 停止服务器 → 恢复 cc-switch 配置 → 清理环境变量
+```
+
+配置备份存储在 `~/.fallback-vision/original-claude-settings.json`。
+
+## MiMo 搜索适配
+
+MiMo 模型不支持 Claude Code 的 web_search / web_fetch。
+
+检测方式：基于 API 行为（非模型名称），向主模型发送测试请求检查是否支持工具调用。
+
+当检测到 MiMo 时：
+- 拦截 web_search / web_fetch 请求
+- 使用 DuckDuckGo 本地处理
+- 在 Dashboard 显示提示文字
+
 ## 目录结构
 
 ```
@@ -58,7 +93,20 @@ src/
 ├── proxy/
 │   ├── upstream.ts       # 上游 HTTP 客户端
 │   └── pipeline.ts       # ⭐ 两步流程引擎（核心）
-└── dashboard/            # Web UI
+├── tools/
+│   └── search.ts         # DuckDuckGo 搜索处理
+├── translate/
+│   ├── anthropic-to-openai.ts  # Anthropic → OpenAI 转换
+│   └── openai-to-anthropic.ts  # OpenAI → Anthropic 转换
+├── dashboard/
+│   └── handler.ts        # Web UI API
+└── util/
+    └── stream.ts         # SSE 流处理
+
+bin/
+├── fv-claude.js          # Claude Code 一键启动（v2）
+├── fv-codex.js           # Codex 一键启动
+└── fv-stop.js            # 停止服务 + 恢复配置
 ```
 
 ## 环境变量

@@ -11,5 +11,6 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 COPY --from=builder /app/dist/ dist/
+COPY bin/ bin/
 EXPOSE 8789
 CMD ["node", "dist/cli.js"]

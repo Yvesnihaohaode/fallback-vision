@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { writeFileSync, readFileSync, existsSync, unlinkSync, copyFileSync } from "node:fs";
+import { writeFileSync, readFileSync, existsSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import type { GatewayConfig } from "../config/loader.js";
@@ -8,18 +8,20 @@ import { sendIndex } from "./pages/index.js";
 import { log } from "../util/logger.js";
 
 const CLAUDE_SETTINGS = join(homedir(), ".claude", "settings.json");
-const ORIGINAL_SETTINGS = join(homedir(), ".fallback-vision", "original-claude-settings.json");
+const FV_DIR = join(homedir(), ".fallback-vision");
+const RESTART_FLAG = join(FV_DIR, ".restart");
 
 /**
- * Dashboard does NOT write to settings.json.
- * settings.json is managed by fv-claude.js (start) and fv-stop.js (stop).
- * Writing from the dashboard causes conflicts with ccswitch.
+ * Dashboard saves FV settings and triggers restart.
  *
- * When "Save & Restart" is clicked:
- *   1. Save FV settings
- *   2. Restore original settings.json (undo proxy config)
- *   3. Exit server
- * User runs fv-claude again to re-enable proxy.
+ * "Save & Restart" flow:
+ *   1. Save FV settings to ~/.fallback-vision/settings.json
+ *   2. Write restart flag
+ *   3. Respond to client
+ *   4. Server exits after 500ms
+ *   5. fv-claude watcher detects restart flag → restarts server → applies new config
+ *
+ * Dashboard does NOT touch settings.json — that's managed by fv-claude.js.
  */
 
 export function handleDashboard(cfg: GatewayConfig, req: IncomingMessage, res: ServerResponse): void {
@@ -36,7 +38,7 @@ export function handleDashboard(cfg: GatewayConfig, req: IncomingMessage, res: S
     return;
   }
 
-  // API: Update settings (FV settings + sync to Claude's settings.json if proxy active)
+  // API: Update settings (FV settings only — settings.json is managed by fv-claude.js)
   if (req.method === "POST" && url === "/dashboard/api/settings") {
     let body = "";
     req.on("data", (chunk: Buffer) => { body += chunk.toString(); });
@@ -46,28 +48,11 @@ export function handleDashboard(cfg: GatewayConfig, req: IncomingMessage, res: S
         saveSettings(settings);
         log.info("FV settings saved via dashboard");
 
-        // If FV proxy is active, sync model name & API key to Claude's settings.json
-        if (existsSync(CLAUDE_SETTINGS)) {
-          try {
-            const claudeSettings: Record<string, unknown> = JSON.parse(readFileSync(CLAUDE_SETTINGS, "utf-8"));
-            const env = claudeSettings.env as Record<string, string> | undefined;
-            if (env && (env.ANTHROPIC_BASE_URL || "").includes("127.0.0.1")) {
-              const mainModel = settings.mainModel as Record<string, string> | undefined;
-              if (mainModel) {
-                if (mainModel.modelName) env.ANTHROPIC_MODEL = mainModel.modelName;
-                if (mainModel.apiKey) env.ANTHROPIC_AUTH_TOKEN = mainModel.apiKey;
-                writeFileSync(CLAUDE_SETTINGS, JSON.stringify(claudeSettings, null, 2));
-                log.info("Synced model to Claude settings.json: " + mainModel.modelName);
-              }
-            }
-          } catch {}
-        }
-
         res.writeHead(200, {
           "Content-Type": "application/json",
           "X-Fallback-Vision-Version": cfg.version,
         });
-        res.end(JSON.stringify({ ok: true, message: "Settings saved. Restarting..." }));
+        res.end(JSON.stringify({ ok: true, message: "Settings saved." }));
       } catch {
         res.writeHead(400, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ error: "invalid JSON" }));
@@ -76,47 +61,19 @@ export function handleDashboard(cfg: GatewayConfig, req: IncomingMessage, res: S
     return;
   }
 
-  // API: Restart — restore original settings.json and exit
-  // User re-runs fv-claude to re-enable proxy with new config
+  // API: Restart — set restart flag and exit
+  // fv-claude watcher will detect the flag, restart server, and apply new config
   if (req.method === "POST" && url === "/dashboard/api/restart") {
     try {
-      // Restore original settings.json (undo proxy config)
-      let restored = false;
-      if (existsSync(ORIGINAL_SETTINGS)) {
-        try {
-          const original = JSON.parse(readFileSync(ORIGINAL_SETTINGS, "utf-8"));
-          const origUrl = (original.env && original.env.ANTHROPIC_BASE_URL) || "";
-          if (!origUrl.includes("127.0.0.1")) {
-            copyFileSync(ORIGINAL_SETTINGS, CLAUDE_SETTINGS);
-            log.info("Restored original settings.json on restart");
-            restored = true;
-          }
-        } catch {}
-      }
-      if (!restored) {
-        // No valid original — clean proxy env vars
-        try {
-          let s: Record<string, unknown> = {};
-          if (existsSync(CLAUDE_SETTINGS)) {
-            s = JSON.parse(readFileSync(CLAUDE_SETTINGS, "utf-8"));
-          }
-          const env = s.env as Record<string, string> | undefined;
-          if (env) {
-            delete env.ANTHROPIC_BASE_URL;
-            delete env.ANTHROPIC_AUTH_TOKEN;
-            delete env.ANTHROPIC_MODEL;
-          }
-          writeFileSync(CLAUDE_SETTINGS, JSON.stringify(s, null, 2));
-          log.info("Cleaned proxy env vars from settings.json");
-        } catch {}
-      }
+      // Write restart flag for fv-claude watcher
+      writeFileSync(RESTART_FLAG, String(Date.now()));
+      log.info("Dashboard restart: restart flag written");
 
-      log.info("Dashboard restart: exiting server");
       res.writeHead(200, {
         "Content-Type": "application/json",
         "X-Fallback-Vision-Version": cfg.version,
       });
-      res.end(JSON.stringify({ ok: true, message: "Settings saved. Server stopping." }));
+      res.end(JSON.stringify({ ok: true, message: "Restarting server..." }));
       setTimeout(() => process.exit(0), 500);
     } catch (err) {
       res.writeHead(500, { "Content-Type": "application/json" });

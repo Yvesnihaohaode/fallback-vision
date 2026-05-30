@@ -31,6 +31,9 @@ if (platform() === "win32") {
 console.log("✅ 服务已停止");
 
 // Restore original Claude settings
+// Clean up FV-active marker
+const FV_ACTIVE_MARKER = join(FV_DIR, ".fv-active");
+if (existsSync(FV_ACTIVE_MARKER)) unlinkSync(FV_ACTIVE_MARKER);
 var restored = false;
 
 // Priority 1: original-claude-settings.json (reliable storage)

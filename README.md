@@ -2,9 +2,19 @@
 
 AI Gateway with intelligent visual fallback routing. When you send an image to a text-only model, it automatically routes to a vision model.
 
+**当前版本: v0.5.4** | **状态: 核心功能完成，持续优化中**
+
 ```
 Your App → Fallback Vision → Detects Image → Vision Model analyzes → Main Model reasons → Response
 ```
+
+## 它能做什么
+
+- **视觉回退**：主模型没多模态？自动调用视觉模型看图，把描述传给主模型推理
+- **跨 Provider**：不管主模型是 MiMo、DeepSeek、OpenAI 还是 Claude，视觉回退都能工作
+- **协议转换**：Claude Code (Anthropic) 和 Codex (OpenAI) 都能用
+- **cc-switch 集成**：fv-claude 启动，fv-stop 恢复，无缝切换
+- **MiMo 搜索适配**：Claude Code + MiMo 也能用 web_search / web_fetch
 
 ## Quick Start
 
@@ -12,8 +22,8 @@ Your App → Fallback Vision → Detects Image → Vision Model analyzes → Mai
 
 ```bash
 npm install -g fallback-vision
-fv-claude    # 启动 Claude Code
-fv-codex     # 启动 Codex
+fv-claude    # 启动 Claude Code 模式
+fv-codex     # 启动 Codex 模式
 ```
 
 ### 方式二：Docker
@@ -47,6 +57,7 @@ node bin/fv-claude.js    # 或 node bin/fv-codex.js
 | `fv-codex` | 启动服务 + 打开 Codex |
 | `fv-claude-docker` | Docker 启动 + Claude Code |
 | `fv-codex-docker` | Docker 启动 + Codex |
+| `fv-stop` | 停止服务 + 恢复原始配置 |
 | `fallback-vision-setup` | 交互式向导 |
 | `fallback-vision` | 仅启动服务 |
 
@@ -55,8 +66,8 @@ node bin/fv-claude.js    # 或 node bin/fv-codex.js
 浏览器打开 http://127.0.0.1:8789 进入 Web UI 配置：
 
 1. **客户端类型** — Codex (OpenAI) 或 Claude Code (Anthropic)
-2. **主模型** — Provider + API Key + 模型名
-3. **视觉模型** — Provider + API Key + 模型名
+2. **主模型** — Provider + API Key + Base URL + 模型名
+3. **视觉模型** — Provider + API Key + Base URL + 模型名
 4. **本地搜索** — MiMo 专属，解决 web_search/web_fetch 不可用问题
 
 ### Claude Code
@@ -94,13 +105,26 @@ MiMo 不支持 Claude Code 的 `web_search` / `web_fetch`。
 
 在设置页面开启「本地优化搜索」后，Fallback Vision 会用 DuckDuckGo 本地处理搜索请求。
 
+## cc-switch 切换
+
+```bash
+fv-claude   # 启动 Fallback Vision，备份 cc-switch 配置
+fv-stop     # 停止 FV，恢复 cc-switch 配置
+```
+
 ## 开发
 
 ```bash
-npm test          # 59 个测试
+npm test          # 运行测试
 npm run dev       # 热重载开发
 npm run lint      # 类型检查
 ```
+
+## 文档
+
+- [架构文档](docs/ARCHITECTURE.md)
+- [路线图](docs/ROADMAP.md)
+- [更新日志](CHANGELOG.md)
 
 ## License
 
