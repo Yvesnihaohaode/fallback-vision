@@ -22,18 +22,18 @@ function findProjectRoot() {
   return null;
 }
 
-function waitForServer(port, timeout = 10000) {
+function waitForServer(port, timeout = 15000) {
   return new Promise((resolve) => {
     const start = Date.now();
     const check = () => {
       http
         .get(`http://127.0.0.1:${port}/healthz`, (res) => {
           if (res.statusCode === 200) resolve(true);
-          else if (Date.now() - start < timeout) setTimeout(check, 200);
+          else if (Date.now() - start < timeout) setTimeout(check, 300);
           else resolve(false);
         })
         .on("error", () => {
-          if (Date.now() - start < timeout) setTimeout(check, 200);
+          if (Date.now() - start < timeout) setTimeout(check, 300);
           else resolve(false);
         });
     };
@@ -89,7 +89,7 @@ async function main() {
       cwd: root, stdio: "ignore", detached: true,
     });
     server.unref();
-    const ok = await waitForServer(PORT, 10000);
+    const ok = await waitForServer(PORT, 15000);
     if (!ok) { console.error("❌ 启动失败"); process.exit(1); }
     console.log("✅ 服务启动成功");
   }
@@ -98,12 +98,14 @@ async function main() {
   console.log(`\n🌐 Web UI: ${dashboardUrl}`);
   console.log("   可以在这里进一步调整设置\n");
   openBrowser(dashboardUrl);
-  console.log("📋 在网页上配置好后，点击「保存并重启使用」\n");
+  console.log("📋 在网页上配置好后，点击「Save & Restart」\n");
 
-  setInterval(() => {
+  const watcher = setInterval(() => {
     if (existsSync(RESTART_FLAG)) {
       unlinkSync(RESTART_FLAG);
-      console.log("\n🔄 正在重启...");
+      clearInterval(watcher);
+      console.log("\n🔄 检测到重启信号，正在重启...");
+
       killServer();
       setTimeout(async () => {
         console.log("🚀 重新启动服务...");
@@ -111,20 +113,25 @@ async function main() {
           cwd: root, stdio: "ignore", detached: true,
         });
         server.unref();
-        const ok = await waitForServer(PORT, 10000);
+        const ok = await waitForServer(PORT, 15000);
         if (ok) {
-          console.log("✅ 服务重启成功");
+          console.log("✅ 服务重启成功\n");
           console.log("🔧 启动 Codex...");
           if (platform() === "darwin" && existsSync("/Applications/Codex.app")) {
             spawn("open", ["/Applications/Codex.app"], { stdio: "ignore", detached: true }).unref();
           } else {
             console.log("   请手动打开 Codex");
           }
-        } else { console.error("❌ 重启失败"); }
+        } else {
+          console.error("❌ 重启失败");
+        }
         process.exit(0);
       }, 2000);
     }
-  }, 1000);
+  }, 800);
+
+  process.on("SIGINT", () => { clearInterval(watcher); process.exit(0); });
+  process.on("SIGTERM", () => { clearInterval(watcher); process.exit(0); });
 }
 
 main().catch((e) => { console.error("❌ 错误:", e); process.exit(1); });

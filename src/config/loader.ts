@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { join, dirname } from "node:path";
 import type { ProviderConfig, RoutingStrategy } from "../types.js";
 import { ProviderRegistry } from "../providers/registry.js";
 import { loadSettings, type ModelSlot } from "./settings.js";
@@ -69,7 +72,7 @@ export function loadConfig(args: { port?: number; host?: string; verbose?: boole
   return {
     host,
     port,
-    version: "0.3.2",
+    version: (() => { try { return JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), "../../package.json"), "utf-8")).version; } catch { return "0.3.4"; } })(),
     registry,
     routingStrategy: "balanced",
     dashboardEnabled: process.env.FALLBACK_VISION_NO_DASHBOARD !== "1",

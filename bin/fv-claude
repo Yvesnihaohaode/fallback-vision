@@ -84,8 +84,27 @@ sleep 2
 
 if curl -s "http://127.0.0.1:${FV_PORT}/healthz" > /dev/null 2>&1; then
   echo "✅ 服务重启成功"
-  echo "🤖 启动 Claude Code..."
-  ANTHROPIC_BASE_URL="http://127.0.0.1:${FV_PORT}" exec claude
+  # Sync Claude settings.json to point to proxy
+  python3 -c "
+import json, os
+path = os.path.expanduser('~/.claude/settings.json')
+cfg = {}
+if os.path.exists(path):
+    try:
+        with open(path) as f: cfg = json.load(f)
+    except: pass
+if 'env' not in cfg: cfg['env'] = {}
+cfg['env']['ANTHROPIC_BASE_URL'] = 'http://127.0.0.1:${FV_PORT}'
+cfg['env']['ANTHROPIC_AUTH_TOKEN'] = 'fv-proxy-token'
+cfg['env']['ANTHROPIC_MODEL'] = 'claude-sonnet-4-6'
+for k in list(cfg['env'].keys()):
+    if k.startswith('ANTHROPIC_DEFAULT_'): del cfg['env'][k]
+with open(path, 'w') as f: json.dump(cfg, f, indent=2)
+"
+  echo "⚙️  Claude Code 配置已就绪"
+  echo ""
+  echo "🤖 配置完成！请打开新终端输入: claude"
+  echo ""
 else
   echo "❌ 重启失败"
   exit 1

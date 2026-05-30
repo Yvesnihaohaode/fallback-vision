@@ -1,65 +1,114 @@
+// ============================================================================
+// HTTP Server — routes requests to the pipeline
+// Supports Claude Code (/v1/messages), Claude Desktop (/claude-desktop/v1/*)
+// and OpenAI-compatible endpoints
+// ============================================================================
+
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
-import { writeFileSync } from "node:fs";
-import { join } from "node:path";
-import { homedir } from "node:os";
 import type { GatewayConfig } from "./config/loader.js";
-import { executePipeline, type Protocol } from "./proxy/pipeline.js";
+import { executePipeline, executePipelineStream, type Protocol } from "./proxy/pipeline.js";
 import { log } from "./util/logger.js";
 import { handleDashboard } from "./dashboard/handler.js";
+import { loadSettings } from "./config/settings.js";
+
+// Canonical Anthropic model IDs that Claude Code / Claude Desktop expect
+const CANONICAL_MODELS = [
+  "claude-opus-4-8",
+  "claude-opus-4-7",
+  "claude-sonnet-4-6",
+  "claude-sonnet-4-5",
+  "claude-haiku-4-5",
+  "claude-3-7-sonnet-20250219",
+  "claude-3-5-sonnet-20241022",
+  "claude-3-5-haiku-20241022",
+];
 
 export function startServer(cfg: GatewayConfig): Server {
-  const server = createServer(async (req, res) => {
-    const url = req.url ?? "/";
-
-    // Dashboard
-    if (url.startsWith("/dashboard") || url === "/") {
-      return handleDashboard(cfg, req, res);
-    }
-
-    // Health check
-    if (req.method === "GET" && url === "/healthz") {
-      return sendJson(res, 200, { ok: true, name: "fallback-vision" });
-    }
-
-    // Restart endpoint
-    if (req.method === "POST" && url === "/dashboard/api/restart") {
-      const flagPath = join(homedir(), ".fallback-vision", ".restart");
-      try {
-        writeFileSync(flagPath, "restart");
-        log.info("restart signal sent, shutting down...");
-        res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ ok: true }));
-        setTimeout(() => process.exit(0), 200);
-      } catch (err) {
-        res.writeHead(500, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: (err as Error).message }));
+  const server = createServer((req, res) => {
+    // Wrap everything in a top-level catch to prevent process crash
+    handleAll(cfg, req, res).catch((err) => {
+      const message = err instanceof Error ? err.message : "unknown error";
+      log.error("unhandled error", { error: message });
+      if (!res.headersSent) {
+        sendJson(res, 500, errorEnvelope(500, "internal_error", message));
+      } else {
+        try { res.end(); } catch {}
       }
-      return;
-    }
-
-    // API routes
-    if (req.method === "POST") {
-      try {
-        if (url === "/v1/messages") {
-          return await handleRequest(cfg, req, res, "anthropic");
-        }
-        if (url === "/v1/chat/completions" || url === "/v1/responses") {
-          return await handleRequest(cfg, req, res, "openai");
-        }
-      } catch (err) {
-        const message = err instanceof Error ? err.message : "unknown error";
-        log.error("request failed", { error: message });
-        return sendJson(res, 500, errorEnvelope(500, "internal_error", message));
-      }
-    }
-
-    sendJson(res, 404, errorEnvelope(404, "not_found", `no route for ${req.method} ${url}`));
+    });
   });
 
   server.listen(cfg.port, cfg.host);
+  log.info(`Fallback Vision listening on ${cfg.host}:${cfg.port}`);
   return server;
 }
 
+async function handleAll(cfg: GatewayConfig, req: IncomingMessage, res: ServerResponse): Promise<void> {
+  const rawUrl = req.url ?? "/";
+  const url = rawUrl.split("?")[0];
+  const method = req.method ?? "GET";
+
+  // ── Dashboard ──
+  if (url.startsWith("/dashboard") || url === "/") {
+    return handleDashboard(cfg, req, res);
+  }
+
+  // ── Health ──
+  if (method === "GET" && (url === "/healthz" || url === "/health")) {
+    return sendJson(res, 200, { status: "healthy", name: "fallback-vision", version: cfg.version });
+  }
+
+  // ── Model list ──
+  if (method === "GET" && (url === "/v1/models" || url === "/claude-desktop/v1/models")) {
+    return sendModelList(res);
+  }
+
+  // ── POST API routes ──
+  if (method === "POST") {
+    // Anthropic Messages
+    if (url === "/v1/messages" || url === "/claude/v1/messages" || url === "/claude-desktop/v1/messages") {
+      return await handleRequest(cfg, req, res, "anthropic");
+    }
+    // OpenAI Chat / Responses
+    if (
+      url === "/v1/chat/completions" || url === "/chat/completions" ||
+      url === "/v1/responses" || url === "/responses" ||
+      url === "/codex/v1/chat/completions" || url === "/codex/v1/responses"
+    ) {
+      return await handleRequest(cfg, req, res, "openai");
+    }
+  }
+
+  // Probe endpoints
+  if (method === "GET" && (url === "/v1/messages" || url === "/claude/v1/messages")) {
+    return sendJson(res, 200, { ok: true });
+  }
+
+  sendJson(res, 404, errorEnvelope(404, "not_found", `no route for ${method} ${url}`));
+}
+
+// ── Model list ──
+function sendModelList(res: ServerResponse): void {
+  // Include the actual configured model first, then canonical models
+  const settings = loadSettings();
+  const configuredModel = settings.mainModel.modelName;
+  const allModels = configuredModel
+    ? [configuredModel, ...CANONICAL_MODELS.filter((id) => id !== configuredModel)]
+    : CANONICAL_MODELS;
+  const data = allModels.map((id) => ({
+    type: "model",
+    id,
+    created_at: "2024-01-01T00:00:00Z",
+    supports1m: true,
+  }));
+  sendJson(res, 200, {
+    data,
+    has_more: false,
+    first_id: allModels[0],
+    last_id: allModels[allModels.length - 1],
+  });
+}
+
+// ── Request handler ──
 async function handleRequest(
   cfg: GatewayConfig,
   req: IncomingMessage,
@@ -76,27 +125,59 @@ async function handleRequest(
     return sendJson(res, 400, errorEnvelope(400, "missing_model", "request body must include 'model'"));
   }
 
-  log.info(`incoming ${protocol}`, { model });
+  const isStream = !!(body as Record<string, unknown>).stream;
+  log.info(`incoming ${protocol}`, { model, stream: isStream });
 
-  // All requests go through the unified pipeline
-  // Tools are passed through as-is to the upstream model
-  const result = await executePipeline(cfg.registry, body, protocol, cfg.version);
+  if (isStream) {
+    // ── Streaming ──
+    const result = await executePipelineStream(cfg.registry, body, protocol, cfg.version);
 
-  log.info("request completed", {
-    protocol: result.protocol,
-    vision: result.usedVision,
-    visionModel: result.visionModelId,
-    mainModel: result.mainModelId,
-    totalMs: result.latencyMs,
-  });
+    res.writeHead(200, {
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
+      "x-request-id": `req_${Date.now()}`,
+    });
 
-  res.writeHead(200, {
-    "Content-Type": "application/json",
-    ...(protocol === "anthropic" ? { "x-request-id": `req_${Date.now()}` } : {}),
-  });
-  res.end(JSON.stringify(result.response));
+    try {
+      for await (const chunk of result.stream) {
+        if (res.destroyed) break;
+        res.write(chunk);
+      }
+    } catch (err) {
+      log.error("streaming error", { error: (err as Error).message });
+    } finally {
+      if (!res.destroyed) res.end();
+    }
+
+    log.info("stream completed", {
+      protocol: result.protocol,
+      vision: result.usedVision,
+      visionModel: result.visionModelId,
+      mainModel: result.mainModelId,
+      totalMs: result.latencyMs,
+    });
+  } else {
+    // ── Non-streaming ──
+    const result = await executePipeline(cfg.registry, body, protocol, cfg.version);
+
+    log.info("request completed", {
+      protocol: result.protocol,
+      vision: result.usedVision,
+      visionModel: result.visionModelId,
+      mainModel: result.mainModelId,
+      totalMs: result.latencyMs,
+    });
+
+    res.writeHead(200, {
+      "Content-Type": "application/json",
+      ...(protocol === "anthropic" ? { "x-request-id": `req_${Date.now()}` } : {}),
+    });
+    res.end(JSON.stringify(result.response));
+  }
 }
 
+// ── Helpers ──
 async function readJsonBody(req: IncomingMessage): Promise<unknown> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];

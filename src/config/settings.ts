@@ -15,10 +15,12 @@ export interface AppSettings {
   clientType: ClientType;
   mainModel: ModelSlot;
   visionModel: ModelSlot;
+  claudeModelAlias: string;
+  localSearchEnabled: boolean;
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
-  clientType: "codex",
+  clientType: "claude",
   mainModel: {
     providerName: "",
     apiKey: "",
@@ -31,6 +33,8 @@ const DEFAULT_SETTINGS: AppSettings = {
     baseUrl: "",
     modelName: "",
   },
+  claudeModelAlias: "claude-3-5-sonnet-20241022",
+  localSearchEnabled: false,
 };
 
 function getSettingsPath(): string {
@@ -47,6 +51,8 @@ export function loadSettings(): AppSettings {
       clientType: parsed.clientType ?? DEFAULT_SETTINGS.clientType,
       mainModel: { ...DEFAULT_SETTINGS.mainModel, ...parsed.mainModel },
       visionModel: { ...DEFAULT_SETTINGS.visionModel, ...parsed.visionModel },
+      claudeModelAlias: parsed.claudeModelAlias ?? DEFAULT_SETTINGS.claudeModelAlias,
+      localSearchEnabled: parsed.localSearchEnabled ?? DEFAULT_SETTINGS.localSearchEnabled,
     };
   } catch {
     return structuredClone(DEFAULT_SETTINGS);
@@ -118,11 +124,12 @@ export const PROVIDERS: ProviderInfo[] = [
       { id: "deepseek-chat", vision: false, reasoning: true, description: "通用对话，强推理", tags: ["推理", "便宜"] },
       { id: "deepseek-coder", vision: false, reasoning: true, description: "代码专用，编程强", tags: ["代码", "推理"] },
       { id: "deepseek-reasoner", vision: false, reasoning: true, description: "深度推理，数学/逻辑强", tags: ["推理", "数学"] },
+      { id: "deepseek-v4-pro", vision: false, reasoning: true, description: "V4 旗舰推理模型", tags: ["推理", "旗舰"] },
     ],
   },
   {
     name: "MiMo",
-    baseUrl: "",
+    baseUrl: "https://token-plan-cn.xiaomimimo.com/v1",
     models: [
       { id: "mimo-v2.5-pro", vision: false, reasoning: true, description: "推理强，不支持图片", tags: ["推理"] },
       { id: "mimo-v2-pro", vision: false, reasoning: true, description: "推理强，不支持图片", tags: ["推理"] },
@@ -168,9 +175,13 @@ export function detectModelCapabilities(modelName: string): {
   return { vision, reasoning, description: "未识别的模型 — 根据名称推测能力", known: false };
 }
 
-// Check if a model ID belongs to MiMo
-export function isMiMoModel(modelId: string): boolean {
-  const mimoProvider = PROVIDERS.find(p => p.name === "MiMo");
-  if (!mimoProvider) return false;
-  return mimoProvider.models.some(m => m.id === modelId);
+// Check if the current main model uses MiMo as provider
+// Detection is by provider name in settings, NOT by model name
+export function isMiMoModel(_modelId?: string): boolean {
+  try {
+    const settings = loadSettings();
+    return settings.mainModel.providerName.toLowerCase().includes("mimo");
+  } catch {
+    return false;
+  }
 }

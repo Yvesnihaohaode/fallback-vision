@@ -1,65 +1,85 @@
-import { log, redactKey } from "../util/logger.js";
-import type { ModelInfo } from "../types.js";
+// ============================================================================
+// Upstream HTTP Client — talks to MiMo, DeepSeek, OpenAI, etc.
+// ============================================================================
 
-export interface UpstreamConfig {
-  baseUrl: string;
-  apiKey: string;
-  model: ModelInfo;
-  userAgent: string;
-  timeoutMs?: number;
-}
+import { log } from "../util/logger.js";
 
-export class UpstreamError extends Error {
-  status: number;
-  bodySnippet?: string;
+export async function callUpstreamChat(
+  baseUrl: string,
+  apiKey: string,
+  body: unknown
+): Promise<Record<string, unknown>> {
+  const url = `${baseUrl}/chat/completions`;
 
-  constructor(status: number, message: string, bodySnippet?: string) {
-    super(message);
-    this.name = "UpstreamError";
-    this.status = status;
-    this.bodySnippet = bodySnippet;
+  log.debug("upstream request", {
+    url,
+    model: (body as Record<string, unknown>).model,
+    stream: (body as Record<string, unknown>).stream,
+  });
+
+  const resp = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!resp.ok) {
+    const text = await resp.text().catch(() => "");
+    throw new Error(`upstream ${resp.status}: ${text.slice(0, 500)}`);
   }
+
+  return (await resp.json()) as Record<string, unknown>;
 }
 
 /**
- * Forward a request to an upstream AI provider.
- * Default timeout: 60s. Tool interception rounds use 30s.
+ * Streaming version: returns an async generator of raw SSE text chunks
+ * from the upstream provider. Each yield may contain one or more complete
+ * or partial lines.
  */
-export async function callUpstream(
-  cfg: UpstreamConfig,
+export async function* callUpstreamChatStreaming(
+  baseUrl: string,
+  apiKey: string,
   body: unknown,
-  path: string = "/chat/completions"
-): Promise<Response> {
-  const url = `${cfg.baseUrl.replace(/\/+$/, "")}${path}`;
-  const timeoutMs = cfg.timeoutMs ?? 60_000;
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    Accept: "application/json",
-    "User-Agent": cfg.userAgent,
-    Authorization: `Bearer ${cfg.apiKey}`,
-  };
+): AsyncGenerator<string, void, unknown> {
+  const url = `${baseUrl}/chat/completions`;
 
-  log.debug(`upstream POST ${url}`, {
-    model: cfg.model.id,
-    apiKey: redactKey(cfg.apiKey),
-    timeoutMs,
+  log.debug("upstream streaming request", {
+    url,
+    model: (body as Record<string, unknown>).model,
   });
 
-  const res = await fetch(url, {
+  const resp = await fetch(url, {
     method: "POST",
-    headers,
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    },
     body: JSON.stringify(body),
-    signal: AbortSignal.timeout(timeoutMs),
   });
 
-  if (!res.ok) {
-    const snippet = await res.text().catch(() => "");
-    throw new UpstreamError(
-      res.status,
-      `upstream returned ${res.status}: ${snippet.slice(0, 200)}`,
-      snippet.slice(0, 800)
-    );
+  if (!resp.ok) {
+    const text = await resp.text().catch(() => "");
+    throw new Error(`upstream ${resp.status}: ${text.slice(0, 500)}`);
   }
 
-  return res;
+  if (!resp.body) {
+    throw new Error("upstream returned no body for streaming request");
+  }
+
+  // Read the SSE stream using Node.js ReadableStream
+  const reader = resp.body.getReader();
+  const decoder = new TextDecoder();
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      yield decoder.decode(value, { stream: true });
+    }
+  } finally {
+    reader.releaseLock();
+  }
 }

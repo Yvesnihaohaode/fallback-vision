@@ -1,6 +1,6 @@
 {
   "name": "fallback-vision",
-  "version": "0.3.2",
+  "version": "0.5.0",
   "description": "AI Gateway with intelligent visual fallback routing",
   "type": "module",
   "main": "dist/index.js",
@@ -10,7 +10,8 @@
     "fv-claude": "bin/fv-claude.js",
     "fv-codex": "bin/fv-codex.js",
     "fv-claude-docker": "bin/fv-claude.js",
-    "fv-codex-docker": "bin/fv-codex.js"
+    "fv-codex-docker": "bin/fv-codex.js",
+    "fv-stop": "bin/fv-stop.js"
   },
   "scripts": {
     "build": "tsc",
