@@ -39,7 +39,7 @@ const DEFAULT_SETTINGS: AppSettings = {
 };
 
 function getSettingsPath(): string {
-  return join(homedir(), ".fallback-vision", "settings.json");
+  return process.env.FV_SETTINGS_PATH || join(homedir(), ".fallback-vision", "settings.json");
 }
 
 export function loadSettings(): AppSettings {

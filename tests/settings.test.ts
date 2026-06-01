@@ -9,17 +9,18 @@ const testFile = join(testDir, "settings.json");
 
 describe("Settings", () => {
   beforeEach(() => {
+    process.env.FV_SETTINGS_PATH = testFile;
+    if (!existsSync(testDir)) mkdirSync(testDir, { recursive: true });
     if (existsSync(testFile)) rmSync(testFile);
   });
 
   afterEach(() => {
+    delete process.env.FV_SETTINGS_PATH;
     if (existsSync(testFile)) rmSync(testFile);
     if (existsSync(testDir)) rmSync(testDir, { recursive: true });
   });
 
   it("loadSettings returns defaults when no file", () => {
-    // The real settings path is ~/.fallback-vision/settings.json
-    // This test just verifies the function works
     const settings = loadSettings();
     expect(settings).toHaveProperty("clientType");
     expect(settings).toHaveProperty("mainModel");
