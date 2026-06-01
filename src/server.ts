@@ -131,16 +131,9 @@ async function handleRequest(
 
   if (isStream) {
     // ── Streaming ──
-    let result;
-    try {
-      result = await executePipelineStream(cfg.registry, body, protocol, cfg.version);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "unknown";
-      log.error("pipeline error (stream)", { error: msg });
-      recordRequest({ protocol, model: model ?? "unknown", latencyMs: 0, usedVision: false, ok: false });
-      throw err;
-    }
-
+    // Send headers immediately — the pipeline may buffer (e.g. MiMo tool-call
+    // loop takes multiple non-streaming rounds), and if no bytes arrive within
+    // the client's timeout window, Claude Code disconnects and retries.
     res.writeHead(200, {
       "Content-Type": "text/event-stream; charset=utf-8",
       "Cache-Control": "no-cache",
@@ -148,25 +141,58 @@ async function handleRequest(
       "x-request-id": `req_${Date.now()}`,
     });
 
+    // SSE keep-alive pings every 3s while waiting for the pipeline to produce
+    // its first chunk. Standard SSE comment lines would also work, but ping
+    // events match the format already used in bufferedResponseToSSE.
+    const keepAlive = setInterval(() => {
+      if (!res.destroyed) res.write("event: ping\ndata: {}\n\n");
+    }, 3000);
+    req.on("close", () => clearInterval(keepAlive));
+
+    let result;
+    try {
+      result = await executePipelineStream(cfg.registry, body, protocol, cfg.version);
+    } catch (err) {
+      clearInterval(keepAlive);
+      const msg = err instanceof Error ? err.message : "unknown";
+      log.error("pipeline error (stream)", { error: msg });
+      recordRequest({ protocol, model: model ?? "unknown", latencyMs: 0, usedVision: false, ok: false });
+      if (!res.destroyed) {
+        res.write(`event: error\ndata: ${JSON.stringify({ error: { message: msg } })}\n\n`);
+        res.end();
+      }
+      return;
+    }
+
+    clearInterval(keepAlive);
+
+    let streamOk = true;
     try {
       for await (const chunk of result.stream) {
         if (res.destroyed) break;
         res.write(chunk);
       }
     } catch (err) {
-      log.error("streaming error", { error: (err as Error).message });
+      streamOk = false;
+      const msg = (err as Error).message;
+      log.error("streaming error", { error: msg });
+      if (!res.destroyed) {
+        res.write(`event: error\ndata: ${JSON.stringify({ error: { message: msg } })}\n\n`);
+      }
     } finally {
       if (!res.destroyed) res.end();
     }
 
-    log.info("stream completed", {
-      protocol: result.protocol,
-      vision: result.usedVision,
-      visionModel: result.visionModelId,
-      mainModel: result.mainModelId,
-      totalMs: result.latencyMs,
-    });
-    recordRequest({ protocol: result.protocol, model: result.mainModelId, latencyMs: result.latencyMs, usedVision: result.usedVision, ok: true });
+    if (streamOk) {
+      log.info("stream completed", {
+        protocol: result.protocol,
+        vision: result.usedVision,
+        visionModel: result.visionModelId,
+        mainModel: result.mainModelId,
+        totalMs: result.latencyMs,
+      });
+    }
+    recordRequest({ protocol: result.protocol, model: result.mainModelId, latencyMs: result.latencyMs, usedVision: result.usedVision, ok: streamOk });
   } else {
     // ── Non-streaming ──
     let result;
