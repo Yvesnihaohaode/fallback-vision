@@ -1,28 +1,52 @@
 // ============================================================================
-// Upstream HTTP Client — talks to MiMo, DeepSeek, OpenAI, etc.
+// Upstream HTTP Client — talks to MiMo, DeepSeek, OpenAI, Anthropic, etc.
+//
+// Supports two wire formats:
+// - "openai" (default): POST to {baseUrl}/chat/completions, Bearer auth
+// - "anthropic": POST to {baseUrl}/messages, x-api-key auth
 // ============================================================================
 
 import { log } from "../util/logger.js";
 
+export type WireFormat = "openai" | "anthropic";
+
+function resolveUrl(baseUrl: string, wireFormat: WireFormat): string {
+  if (wireFormat === "anthropic") return `${baseUrl}/messages`;
+  return `${baseUrl}/chat/completions`;
+}
+
+function resolveHeaders(apiKey: string, wireFormat: WireFormat): Record<string, string> {
+  if (wireFormat === "anthropic") {
+    return {
+      "Content-Type": "application/json",
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+    };
+  }
+  return {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${apiKey}`,
+  };
+}
+
 export async function callUpstreamChat(
   baseUrl: string,
   apiKey: string,
-  body: unknown
+  body: unknown,
+  wireFormat: WireFormat = "openai",
 ): Promise<Record<string, unknown>> {
-  const url = `${baseUrl}/chat/completions`;
+  const url = resolveUrl(baseUrl, wireFormat);
 
   log.debug("upstream request", {
     url,
+    wireFormat,
     model: (body as Record<string, unknown>).model,
     stream: (body as Record<string, unknown>).stream,
   });
 
   const resp = await fetch(url, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
+    headers: resolveHeaders(apiKey, wireFormat),
     body: JSON.stringify(body),
   });
 
@@ -43,20 +67,19 @@ export async function* callUpstreamChatStreaming(
   baseUrl: string,
   apiKey: string,
   body: unknown,
+  wireFormat: WireFormat = "openai",
 ): AsyncGenerator<string, void, unknown> {
-  const url = `${baseUrl}/chat/completions`;
+  const url = resolveUrl(baseUrl, wireFormat);
 
   log.debug("upstream streaming request", {
     url,
+    wireFormat,
     model: (body as Record<string, unknown>).model,
   });
 
   const resp = await fetch(url, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
+    headers: resolveHeaders(apiKey, wireFormat),
     body: JSON.stringify(body),
   });
 

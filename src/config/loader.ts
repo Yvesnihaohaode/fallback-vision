@@ -23,13 +23,16 @@ const DEFAULTS = {
 
 function slotToProviderConfig(slot: ModelSlot, id: string, priority: number): ProviderConfig {
   const vision = id === "vision";
+  // Auto-detect wire format: DeepSeek Anthropic endpoint uses Anthropic format
+  const wireFormat = slot.wireFormat
+    ?? (slot.baseUrl.toLowerCase().includes("deepseek.com/anthropic") ? "anthropic" : "openai");
   return {
     id,
     displayName: slot.providerName,
     baseUrl: slot.baseUrl,
     apiKey: slot.apiKey,
     defaultModel: slot.modelName,
-    wireFormat: "openai",
+    wireFormat,
     priority,
     models: [{
       id: slot.modelName,

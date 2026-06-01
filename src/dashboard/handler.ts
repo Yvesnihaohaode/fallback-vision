@@ -5,7 +5,8 @@ import { homedir } from "node:os";
 import type { GatewayConfig } from "../config/loader.js";
 import { loadSettings, saveSettings } from "../config/settings.js";
 import { sendIndex } from "./pages/index.js";
-import { log } from "../util/logger.js";
+import { log, getRecentLogs } from "../util/logger.js";
+import { getMetrics } from "../util/metrics.js";
 
 const CLAUDE_SETTINGS = join(homedir(), ".claude", "settings.json");
 const FV_DIR = join(homedir(), ".fallback-vision");
@@ -79,6 +80,46 @@ export function handleDashboard(cfg: GatewayConfig, req: IncomingMessage, res: S
       res.writeHead(500, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: (err as Error).message }));
     }
+    return;
+  }
+
+  // API: Recent logs
+  if (req.method === "GET" && url === "/dashboard/api/logs") {
+    const logs = getRecentLogs();
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(logs));
+    return;
+  }
+
+  // API: Metrics
+  if (req.method === "GET" && url === "/dashboard/api/metrics") {
+    const metrics = getMetrics();
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(metrics));
+    return;
+  }
+
+  // API: SSE log stream
+  if (req.method === "GET" && url === "/dashboard/api/logs/stream") {
+    res.writeHead(200, {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
+    });
+    res.write("data: {\"type\":\"connected\"}\n\n");
+
+    let lastSentTs = "";
+    const interval = setInterval(() => {
+      const logs = getRecentLogs();
+      for (const entry of logs) {
+        if (entry.ts > lastSentTs) {
+          res.write(`data: ${JSON.stringify(entry)}\n\n`);
+          lastSentTs = entry.ts;
+        }
+      }
+    }, 1000);
+
+    req.on("close", () => clearInterval(interval));
     return;
   }
 

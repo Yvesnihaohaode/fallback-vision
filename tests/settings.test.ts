@@ -55,7 +55,7 @@ describe("detectModelCapabilities", () => {
   });
 
   it("detects known Claude models", () => {
-    expect(detectModelCapabilities("claude-sonnet-4-20250514")).toEqual({
+    expect(detectModelCapabilities("claude-sonnet-4-6")).toEqual({
       vision: true, reasoning: true, description: expect.any(String), known: true,
     });
   });

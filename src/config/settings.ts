@@ -9,6 +9,7 @@ export interface ModelSlot {
   apiKey: string;
   baseUrl: string;
   modelName: string;
+  wireFormat?: "openai" | "anthropic";
 }
 
 export interface AppSettings {
@@ -88,64 +89,79 @@ export const PROVIDERS: ProviderInfo[] = [
     name: "OpenAI",
     baseUrl: "https://api.openai.com/v1",
     models: [
-      { id: "gpt-4o", vision: true, reasoning: true, description: "多模态旗舰，支持图片+文本+代码", tags: ["多模态", "推理"] },
+      { id: "gpt-5.5", vision: true, reasoning: true, description: "2026年4月最新旗舰", tags: ["多模态", "推理", "最新"] },
+      { id: "gpt-5.5-mini", vision: true, reasoning: true, description: "轻量版5.5", tags: ["多模态", "推理"] },
+      { id: "gpt-5.4", vision: true, reasoning: true, description: "1M上下文+原生Computer Use", tags: ["多模态", "推理"] },
+      { id: "gpt-5.4-mini", vision: true, reasoning: true, description: "轻量旗舰，推理能力强", tags: ["多模态", "推理"] },
+      { id: "gpt-5.4-nano", vision: true, reasoning: false, description: "最轻量，极速响应", tags: ["多模态", "快"] },
+      { id: "gpt-5.2", vision: true, reasoning: true, description: "上一代旗舰，依然很强", tags: ["多模态", "推理"] },
+      { id: "gpt-5.2-pro", vision: true, reasoning: true, description: "Pro版本，更多算力", tags: ["推理", "最强"] },
+      { id: "gpt-5.1", vision: true, reasoning: true, description: "引入Instant/Thinking双模式", tags: ["多模态", "推理"] },
+      { id: "gpt-5.1-mini", vision: true, reasoning: false, description: "轻量版5.1", tags: ["多模态", "便宜"] },
+      { id: "gpt-5", vision: true, reasoning: true, description: "GPT-5基础版，融合o系列推理", tags: ["多模态", "推理"] },
+      { id: "gpt-4o", vision: true, reasoning: true, description: "经典多模态，稳定可靠", tags: ["多模态", "推理"] },
       { id: "gpt-4o-mini", vision: true, reasoning: false, description: "轻量多模态，性价比高", tags: ["多模态", "便宜"] },
-      { id: "gpt-4.1", vision: true, reasoning: false, description: "2025新版，指令遵循强", tags: ["多模态", "指令"] },
+      { id: "gpt-4.1", vision: true, reasoning: false, description: "指令遵循强", tags: ["多模态", "指令"] },
       { id: "gpt-4.1-mini", vision: true, reasoning: false, description: "轻量版4.1", tags: ["多模态", "便宜"] },
-      { id: "o1", vision: true, reasoning: true, description: "推理模型，擅长数学/编程", tags: ["推理", "数学"] },
-      { id: "o3", vision: true, reasoning: true, description: "最强推理模型", tags: ["推理", "最强"] },
-      { id: "o3-mini", vision: true, reasoning: true, description: "轻量推理模型", tags: ["推理", "便宜"] },
-      { id: "o4-mini", vision: true, reasoning: true, description: "最新推理模型", tags: ["推理", "新"] },
+      { id: "o3-pro", vision: true, reasoning: true, description: "最强推理，Pro算力", tags: ["推理", "最强"] },
     ],
   },
   {
     name: "Anthropic",
     baseUrl: "https://api.anthropic.com/v1",
     models: [
-      { id: "claude-sonnet-4-20250514", vision: true, reasoning: true, description: "最新旗舰，多模态+强推理", tags: ["多模态", "推理"] },
-      { id: "claude-3-5-sonnet-20241022", vision: true, reasoning: true, description: "上一代旗舰，依然很强", tags: ["多模态", "推理"] },
-      { id: "claude-3-5-haiku-20241022", vision: true, reasoning: false, description: "轻量快速，性价比高", tags: ["多模态", "便宜"] },
-      { id: "claude-3-opus-20240229", vision: true, reasoning: true, description: "最强推理，但较慢", tags: ["推理", "最强"] },
+      { id: "claude-opus-4-8", vision: true, reasoning: true, description: "最强旗舰，顶级推理+编码", tags: ["推理", "最强"] },
+      { id: "claude-opus-4-7", vision: true, reasoning: true, description: "上一代旗舰，依然顶尖", tags: ["推理", "最强"] },
+      { id: "claude-opus-4-6", vision: true, reasoning: true, description: "稳定旗舰版", tags: ["推理"] },
+      { id: "claude-sonnet-4-6", vision: true, reasoning: true, description: "最佳速度+智能平衡", tags: ["多模态", "推理"] },
+      { id: "claude-sonnet-4-5", vision: true, reasoning: true, description: "上一代Sonnet，性价比高", tags: ["多模态", "推理"] },
+      { id: "claude-haiku-4-5", vision: true, reasoning: false, description: "极速响应，近前沿智能", tags: ["多模态", "快"] },
     ],
   },
   {
     name: "Google",
     baseUrl: "https://generativelanguage.googleapis.com/v1beta",
     models: [
-      { id: "gemini-2.5-pro", vision: true, reasoning: true, description: "最强多模态，支持超长文本", tags: ["多模态", "推理"] },
+      { id: "gemini-3.5-flash", vision: true, reasoning: true, description: "最新Gemini 3.5，速度快", tags: ["多模态", "推理", "最新"] },
+      { id: "gemini-3.1-pro", vision: true, reasoning: true, description: "Gemini 3 Pro预览版", tags: ["多模态", "推理"] },
+      { id: "gemini-3-flash", vision: true, reasoning: true, description: "Gemini 3快速版", tags: ["多模态", "快"] },
+      { id: "gemini-2.5-pro", vision: true, reasoning: true, description: "最强多模态，超长文本", tags: ["多模态", "推理"] },
       { id: "gemini-2.5-flash", vision: true, reasoning: true, description: "快速多模态，性价比极高", tags: ["多模态", "便宜"] },
-      { id: "gemini-2.0-flash", vision: true, reasoning: false, description: "轻量多模态", tags: ["多模态", "快"] },
+      { id: "gemini-2.5-flash-lite", vision: true, reasoning: false, description: "最轻量多模态", tags: ["多模态", "快"] },
     ],
   },
   {
     name: "DeepSeek",
     baseUrl: "https://api.deepseek.com/v1",
     models: [
-      { id: "deepseek-chat", vision: false, reasoning: true, description: "通用对话，强推理", tags: ["推理", "便宜"] },
-      { id: "deepseek-coder", vision: false, reasoning: true, description: "代码专用，编程强", tags: ["代码", "推理"] },
-      { id: "deepseek-reasoner", vision: false, reasoning: true, description: "深度推理，数学/逻辑强", tags: ["推理", "数学"] },
-      { id: "deepseek-v4-pro", vision: false, reasoning: true, description: "V4 旗舰推理模型", tags: ["推理", "旗舰"] },
+      { id: "deepseek-v4-pro", vision: false, reasoning: true, description: "V4旗舰，深度推理，1M上下文", tags: ["推理", "旗舰"] },
+      { id: "deepseek-v4-flash", vision: false, reasoning: true, description: "V4快速版，支持思考模式", tags: ["推理", "便宜"] },
+      { id: "deepseek-chat", vision: false, reasoning: false, description: "通用对话（v4-flash别名）", tags: ["便宜"] },
+      { id: "deepseek-reasoner", vision: false, reasoning: true, description: "深度推理（v4-flash别名）", tags: ["推理"] },
     ],
   },
   {
-    name: "MiMo",
+    name: "MiMo (小米)",
     baseUrl: "https://token-plan-cn.xiaomimimo.com/v1",
     models: [
-      { id: "mimo-v2.5-pro", vision: false, reasoning: true, description: "推理强，不支持图片", tags: ["推理"] },
-      { id: "mimo-v2-pro", vision: false, reasoning: true, description: "推理强，不支持图片", tags: ["推理"] },
-      { id: "mimo-v2.5", vision: true, reasoning: true, description: "支持视觉+推理", tags: ["多模态", "推理"] },
-      { id: "mimo-v2-omni", vision: true, reasoning: true, description: "支持视觉+音频+推理", tags: ["多模态", "音频"] },
-      { id: "mimo-v2-flash", vision: false, reasoning: false, description: "轻量快速", tags: ["快"] },
+      { id: "mimo-v2.5-pro", vision: false, reasoning: true, description: "最新旗舰，310B参数，强推理", tags: ["推理", "旗舰"] },
+      { id: "mimo-v2.5", vision: true, reasoning: true, description: "多模态，支持视觉+音频+推理", tags: ["多模态", "推理"] },
+      { id: "mimo-v2-flash", vision: false, reasoning: false, description: "高效推理，Agent基础模型", tags: ["快"] },
     ],
   },
   {
     name: "Qwen (通义千问)",
     baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
     models: [
-      { id: "qwen-vl-max", vision: true, reasoning: false, description: "多模态，视觉强", tags: ["多模态"] },
-      { id: "qwen-vl-plus", vision: true, reasoning: false, description: "轻量多模态", tags: ["多模态", "便宜"] },
+      { id: "qwen3.7-max", vision: false, reasoning: true, description: "最新旗舰，最强推理", tags: ["推理", "最新", "最强"] },
+      { id: "qwen3.6-plus", vision: true, reasoning: true, description: "多模态旗舰，均衡", tags: ["多模态", "推理"] },
+      { id: "qwen3.6-flash", vision: true, reasoning: true, description: "快速多模态", tags: ["多模态", "快"] },
+      { id: "qwen3.5-plus", vision: true, reasoning: true, description: "上一代多模态旗舰", tags: ["多模态", "推理"] },
+      { id: "qwen3.5-flash", vision: true, reasoning: false, description: "轻量多模态", tags: ["多模态", "快"] },
+      { id: "qwen-vl-max", vision: true, reasoning: false, description: "视觉专用旗舰", tags: ["多模态"] },
+      { id: "qwen-vl-plus", vision: true, reasoning: false, description: "视觉专用，性价比高", tags: ["多模态", "便宜"] },
       { id: "qwen-max", vision: false, reasoning: true, description: "最强推理", tags: ["推理", "最强"] },
-      { id: "qwen-plus", vision: false, reasoning: true, description: "通用推理", tags: ["推理"] },
+      { id: "qwen-plus", vision: false, reasoning: true, description: "通用推理，性价比高", tags: ["推理"] },
       { id: "qwen-turbo", vision: false, reasoning: false, description: "轻量快速", tags: ["快", "便宜"] },
     ],
   },
@@ -175,12 +191,29 @@ export function detectModelCapabilities(modelName: string): {
   return { vision, reasoning, description: "未识别的模型 — 根据名称推测能力", known: false };
 }
 
-// Check if the current main model uses MiMo as provider
-// Detection is by provider name in settings, NOT by model name
-export function isMiMoModel(_modelId?: string): boolean {
+// Check if the current main model is a MiMo model.
+// Detection is by baseUrl (contains xiaomimimo.com) and model name (starts with mimo-),
+// NOT by provider name which is user-editable free text.
+export function isMiMoModel(modelId?: string): boolean {
   try {
     const settings = loadSettings();
-    return settings.mainModel.providerName.toLowerCase().includes("mimo");
+    const url = settings.mainModel.baseUrl.toLowerCase();
+    const name = (modelId ?? settings.mainModel.modelName).toLowerCase();
+    return url.includes("xiaomimimo.com") || name.startsWith("mimo-");
+  } catch {
+    return false;
+  }
+}
+
+// Check if the current main model uses DeepSeek's Anthropic-compatible endpoint.
+// DeepSeek's Anthropic endpoint handles web_search_20250305 natively —
+// we must NOT intercept it with local search.
+export function isDeepSeekModel(): boolean {
+  try {
+    const settings = loadSettings();
+    const url = settings.mainModel.baseUrl.toLowerCase();
+    const name = settings.mainModel.modelName.toLowerCase();
+    return url.includes("deepseek.com") || name.startsWith("deepseek-");
   } catch {
     return false;
   }

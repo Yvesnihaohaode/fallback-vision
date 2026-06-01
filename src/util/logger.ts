@@ -1,9 +1,23 @@
+import { RingBuffer } from "./ring-buffer.js";
+
 type Level = "debug" | "info" | "warn" | "error";
 
+export interface LogEntry {
+  ts: string;
+  level: Level;
+  msg: string;
+  extra?: string;
+}
+
 let verbose = false;
+const logBuffer = new RingBuffer<LogEntry>(200);
 
 export function setVerbose(v: boolean): void {
   verbose = v;
+}
+
+export function getRecentLogs(): readonly LogEntry[] {
+  return logBuffer.toArray();
 }
 
 function emit(level: Level, msg: string, extra?: Record<string, unknown>): void {
@@ -15,6 +29,7 @@ function emit(level: Level, msg: string, extra?: Record<string, unknown>): void 
   } else {
     console.error(prefix, msg);
   }
+  logBuffer.push({ ts, level, msg, extra: extra ? JSON.stringify(extra) : undefined });
 }
 
 export const log = {

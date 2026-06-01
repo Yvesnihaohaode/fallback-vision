@@ -23,12 +23,15 @@ export type AnthropicContentBlock =
   | { type: "text"; text: string }
   | { type: "image"; source: { type: "base64" | "url"; media_type?: string; data?: string; url?: string } }
   | { type: "tool_use"; id: string; name: string; input: unknown }
-  | { type: "tool_result"; tool_use_id: string; content?: string | AnthropicContentBlock[] };
+  | { type: "tool_result"; tool_use_id: string; content?: string | AnthropicContentBlock[] }
+  | { type: "web_search_tool_result"; tool_use_id: string; content: string };
 
 export interface AnthropicTool {
+  type?: string;     // "web_search_20250305" for server-side search, undefined for custom function tools
   name: string;
   description?: string;
   input_schema: Record<string, unknown>;
+  max_uses?: number;
 }
 
 export interface AnthropicToolChoice {
@@ -57,6 +60,157 @@ export function hasAnthropicImages(body: unknown): boolean {
     }
   }
   return false;
+}
+
+// ============================================================================
+// Web Search & Web Fetch interception utilities
+// ============================================================================
+
+/** Check if an Anthropic request contains web_search_20250305 tools. */
+export function hasWebSearchTools(tools?: AnthropicTool[]): boolean {
+  if (!tools?.length) return false;
+  return tools.some((t) => t.type === "web_search_20250305");
+}
+
+/** Check if an Anthropic request contains a web_fetch custom tool. */
+export function hasWebFetchTools(tools?: AnthropicTool[]): boolean {
+  if (!tools?.length) return false;
+  return tools.some((t) => !t.type && t.name === "web_fetch");
+}
+
+/** Extract the first URL from the last user message. */
+export function extractUrlFromMessages(messages: AnthropicMessage[]): string | null {
+  const lastUserMsg = [...messages].reverse().find((m) => m.role === "user");
+  if (!lastUserMsg) return null;
+  const text = typeof lastUserMsg.content === "string"
+    ? lastUserMsg.content
+    : lastUserMsg.content.filter((c) => c.type === "text").map((c) => (c as { text: string }).text).join("\n");
+  const match = text.match(/https?:\/\/[^\s)]+/);
+  return match ? match[0] : null;
+}
+
+/** Extract the raw text from the last user message — no cleaning applied. */
+export function extractRawQuery(body: unknown): string {
+  const b = body as AnthropicRequest;
+  if (!Array.isArray(b.messages)) return "";
+  const lastUserMsg = [...b.messages].reverse().find((m) => m.role === "user");
+  if (!lastUserMsg) return "";
+  return typeof lastUserMsg.content === "string"
+    ? lastUserMsg.content
+    : Array.isArray(lastUserMsg.content)
+      ? lastUserMsg.content.filter((c) => c.type === "text").map((c) => (c as { text: string }).text).join("\n")
+      : "";
+}
+
+/** Extract a search query from the last user message in the request. */
+export function extractSearchQuery(body: unknown): string {
+  const raw = extractRawQuery(body);
+  return cleanSearchQuery(raw);
+}
+
+/**
+ * Use the main model to extract clean search keywords from a raw user message.
+ *
+ * Uses system-prompt role definition rather than few-shot completion — this
+ * minimizes reasoning overhead on reasoning models (MiMo, DeepSeek-R1, etc.).
+ * With reasoning models, expect 2-5s latency. Used as a fallback when regex
+ * stripping fails on unusual phrasings.
+ *
+ * max_tokens=200 to accommodate reasoning overhead (~50-150 tokens of internal
+ * reasoning before the model outputs the extracted keywords).
+ */
+export async function extractQueryWithAI(rawQuery: string): Promise<string | null> {
+  const { loadSettings } = await import("../config/settings.js");
+  const { callUpstreamChat } = await import("../proxy/upstream.js");
+
+  const settings = loadSettings();
+  if (!settings.mainModel.apiKey || !settings.mainModel.baseUrl) return null;
+
+  const baseUrl = settings.mainModel.baseUrl.toLowerCase();
+  if (baseUrl.includes("127.0.0.1") || baseUrl.includes("localhost")) return null;
+
+  try {
+    const wireFormat = settings.mainModel.wireFormat ?? "openai";
+    const response = await callUpstreamChat(
+      settings.mainModel.baseUrl,
+      settings.mainModel.apiKey,
+      {
+        model: settings.mainModel.modelName,
+        messages: [
+          { role: "system", content: "你是搜索关键词提取器，把用户的自然语言搜索需求提炼成搜索引擎关键词。仅输出关键词，不解释。" },
+          { role: "user", content: rawQuery },
+        ],
+        max_tokens: 200,
+        temperature: 0,
+      },
+      wireFormat,
+    );
+
+    let text: string | undefined;
+    if (wireFormat === "anthropic") {
+      const content = (response as Record<string, unknown>).content as Array<{ type: string; text: string }> | undefined;
+      text = content?.find((c) => c.type === "text")?.text?.trim();
+    } else {
+      const choices = (response as Record<string, unknown>).choices as Array<{ message: { content: string } }> | undefined;
+      text = choices?.[0]?.message?.content?.trim();
+    }
+
+    if (!text || text.length < 2) return null;
+
+    return text.replace(/^["']|["']$/g, "").trim();
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Strip conversational instruction prefixes from a search query.
+ * Users say "帮我搜索一下今天的天气" but search engines need "今天的天气".
+ * Applies patterns iteratively until the result stabilizes — handles
+ * stacked prefixes like "能不能帮我搜一下" → "最近的电影".
+ */
+function cleanSearchQuery(raw: string): string {
+  const cnPattern = /^(?:能不能|能否|可不可以|可以|拜托|求你|你?帮我|请帮我|麻烦你|麻烦|请|帮忙|你帮|我想|我要|\s)*(?:详细|仔细|认真|快速|简单|大概|大致|帮忙|赶快|赶紧)?(?:搜索一下|搜索|查询一下|查询|搜寻|查找一下|查找|搜一下|搜一搜|搜搜|搜|查一下|查一查|查查|查|找一下|找一找|找找|找|看看|看|了解(?:一下)?|知道|告诉(?:我|一下)?)(?:一下|一查|一搜|一找|一看|下)?[：:，,。.\s]*/i;
+
+  const enPattern = /^(?:search for|search|find|look up|look for|tell me about|tell me|what is|what are|who is|how to|can you|could you|please|i want to|i need to|i would like to|what|who|how|when|where|why|which|information about|info on|the|a|an)\s+/i;
+
+  let result = raw.trim();
+  // Loop until stable (max 5 iterations — safety against infinite loops)
+  for (let i = 0; i < 5; i++) {
+    const prev = result;
+    result = result.replace(cnPattern, "").trim();
+    result = result.replace(enPattern, "").trim();
+    if (result === prev) break;
+  }
+  return result;
+}
+
+/**
+ * Build an Anthropic response containing web_search_tool_result blocks.
+ * This mimics what Anthropic's own API returns when it executes a web search
+ * server-side. Claude Code receives these results and sends a follow-up
+ * request where the model generates the actual answer.
+ */
+export function buildWebSearchResponse(
+  searchResults: string,
+  model: string,
+  toolUseId?: string,
+): AnthropicResponse {
+  return {
+    id: `msg_${Date.now()}`,
+    type: "message",
+    role: "assistant",
+    content: [
+      {
+        type: "web_search_tool_result",
+        tool_use_id: toolUseId ?? `toolu_${Date.now().toString(36)}`,
+        content: searchResults,
+      },
+    ],
+    model,
+    stop_reason: "tool_use",
+    usage: { input_tokens: 0, output_tokens: 0 },
+  };
 }
 
 // ============================================================================
@@ -152,6 +306,7 @@ export function anthropicToChat(req: AnthropicRequest): Record<string, unknown> 
   }
   if (req.temperature !== undefined) r.temperature = req.temperature;
   if (req.top_p !== undefined) r.top_p = req.top_p;
+  if (req.max_tokens !== undefined) r.max_tokens = req.max_tokens;
   return r;
 }
 
@@ -341,6 +496,10 @@ export async function* openaiSSEToAnthropicSSE(
 
           if (fn?.name && typeof fn.name === "string") {
             yield* closeText();
+            // Close previous tool block if one was open
+            if (toolBlockIdx >= 0) {
+              yield emitSSE("content_block_stop", { type: "content_block_stop", index: toolBlockIdx });
+            }
             toolBlockIdx = blockIdx;
 
             yield emitSSE("content_block_start", {

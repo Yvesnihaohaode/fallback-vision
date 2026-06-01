@@ -10,6 +10,7 @@ import { executePipeline, executePipelineStream, type Protocol } from "./proxy/p
 import { log } from "./util/logger.js";
 import { handleDashboard } from "./dashboard/handler.js";
 import { loadSettings } from "./config/settings.js";
+import { recordRequest } from "./util/metrics.js";
 
 // Canonical Anthropic model IDs that Claude Code / Claude Desktop expect
 const CANONICAL_MODELS = [
@@ -130,7 +131,15 @@ async function handleRequest(
 
   if (isStream) {
     // ── Streaming ──
-    const result = await executePipelineStream(cfg.registry, body, protocol, cfg.version);
+    let result;
+    try {
+      result = await executePipelineStream(cfg.registry, body, protocol, cfg.version);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "unknown";
+      log.error("pipeline error (stream)", { error: msg });
+      recordRequest({ protocol, model: model ?? "unknown", latencyMs: 0, usedVision: false, ok: false });
+      throw err;
+    }
 
     res.writeHead(200, {
       "Content-Type": "text/event-stream; charset=utf-8",
@@ -157,9 +166,18 @@ async function handleRequest(
       mainModel: result.mainModelId,
       totalMs: result.latencyMs,
     });
+    recordRequest({ protocol: result.protocol, model: result.mainModelId, latencyMs: result.latencyMs, usedVision: result.usedVision, ok: true });
   } else {
     // ── Non-streaming ──
-    const result = await executePipeline(cfg.registry, body, protocol, cfg.version);
+    let result;
+    try {
+      result = await executePipeline(cfg.registry, body, protocol, cfg.version);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "unknown";
+      log.error("pipeline error", { error: msg });
+      recordRequest({ protocol, model: model ?? "unknown", latencyMs: 0, usedVision: false, ok: false });
+      throw err;
+    }
 
     log.info("request completed", {
       protocol: result.protocol,
@@ -168,6 +186,7 @@ async function handleRequest(
       mainModel: result.mainModelId,
       totalMs: result.latencyMs,
     });
+    recordRequest({ protocol: result.protocol, model: result.mainModelId, latencyMs: result.latencyMs, usedVision: result.usedVision, ok: true });
 
     res.writeHead(200, {
       "Content-Type": "application/json",
