@@ -1,14 +1,15 @@
 #!/usr/bin/env node
 // Fallback Vision — 一键启动 Codex (跨平台)
 
-import { spawn, execSync } from "node:child_process";
-import { existsSync, mkdirSync, unlinkSync } from "node:fs";
+import { spawn, spawnSync, execSync } from "node:child_process";
+import { existsSync, mkdirSync, unlinkSync, readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { homedir, platform } from "node:os";
 import http from "node:http";
 
 const PORT = Number(process.env.FALLBACK_VISION_PORT) || 8789;
-const RESTART_FLAG = join(homedir(), ".fallback-vision", ".restart");
+const FV_DIR = join(homedir(), ".fallback-vision");
+const RESTART_FLAG = join(FV_DIR, ".restart");
 
 function findProjectRoot() {
   const scriptDir = dirname(new URL(import.meta.url).pathname);
@@ -54,10 +55,30 @@ function openBrowser(url) {
 }
 
 function killServer() {
+  const PORT = Number(process.env.FALLBACK_VISION_PORT) || 8789;
   if (platform() === "win32") {
     spawn("taskkill", ["/f", "/fi", "WINDOWTITLE eq fallback*"], { stdio: "ignore", detached: true }).unref();
   } else {
-    spawn("pkill", ["-f", "fallback-vision"], { stdio: "ignore", detached: true }).unref();
+    // Kill by port — most reliable
+    try {
+      const result = spawnSync("lsof", ["-ti:" + PORT], { encoding: "utf-8" });
+      const pids = (result.stdout || "").trim().split("\n").filter(Boolean);
+      for (const pid of pids) {
+        const p = Number(pid);
+        if (p > 0) {
+          try { process.kill(p, "SIGTERM"); } catch(e) {}
+        }
+      }
+    } catch(e) {}
+    // Also try PID file
+    try {
+      const pidFile = join(FV_DIR, "server.pid");
+      if (existsSync(pidFile)) {
+        const pid = Number(readFileSync(pidFile, "utf-8").trim());
+        if (pid > 0) { try { process.kill(pid, "SIGTERM"); } catch(e) {} }
+        unlinkSync(pidFile);
+      }
+    } catch(e) {}
   }
 }
 

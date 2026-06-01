@@ -1,7 +1,7 @@
 {
   "name": "fallback-vision",
-  "version": "0.5.5",
-  "description": "AI Gateway with intelligent visual fallback routing",
+  "version": "0.6.0",
+  "description": "AI Gateway with visual fallback routing, hybrid multi-backend search, and protocol translation for Claude Code & Codex",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
@@ -28,7 +28,16 @@
     "routing",
     "proxy",
     "claude-code",
-    "codex"
+    "codex",
+    "mimo",
+    "deepseek",
+    "multi-model",
+    "vision-model",
+    "protocol-translation",
+    "hybrid-search",
+    "web-search",
+    "openai-compatible",
+    "anthropic-compatible"
   ],
   "license": "MIT",
   "engines": {
@@ -45,9 +54,14 @@
     "AGENTS.md"
   ],
   "devDependencies": {
-    "typescript": "^5.5.0",
-    "vitest": "^3.0.0",
+    "@types/node": "^22.0.0",
     "tsx": "^4.0.0",
-    "@types/node": "^22.0.0"
+    "typescript": "^5.5.0",
+    "vitest": "^3.0.0"
+  },
+  "dependencies": {
+    "@mozilla/readability": "^0.6.0",
+    "linkedom": "^0.18.12",
+    "undici": "^8.3.0"
   }
 }

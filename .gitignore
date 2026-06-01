@@ -4,3 +4,5 @@ dist/
 *.log
 .DS_Store
 *.bak
+test-mimo-native.mjs
+test-tool-loop.mjs

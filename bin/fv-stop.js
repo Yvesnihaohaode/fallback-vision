@@ -14,11 +14,23 @@ const CLAUDE_SETTINGS_BACKUP = join(FV_DIR, "claude-settings-backup.json");
 
 console.log("\n⏹  Fallback Vision — 停止服务\n");
 
-// Kill server
+// Kill server — by port (most reliable) + PID file (fallback)
+const PORT = Number(process.env.FALLBACK_VISION_PORT) || 8789;
 if (platform() === "win32") {
   spawnSync("taskkill", ["/f", "/fi", "WINDOWTITLE eq fallback*"], { stdio: "ignore" });
 } else {
-  spawnSync("pkill", ["-f", "fallback-vision"], { stdio: "ignore" });
+  // Primary: kill by port number
+  try {
+    const result = spawnSync("lsof", ["-ti:" + PORT], { encoding: "utf-8" });
+    const pids = (result.stdout || "").trim().split("\n").filter(Boolean);
+    for (const pid of pids) {
+      const p = Number(pid);
+      if (p > 0) {
+        try { process.kill(p, "SIGTERM"); } catch(e) {}
+      }
+    }
+  } catch(e) {}
+  // Fallback: kill by PID file
   try {
     const pidFile = join(FV_DIR, "server.pid");
     if (existsSync(pidFile)) {

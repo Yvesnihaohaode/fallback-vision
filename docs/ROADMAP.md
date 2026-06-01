@@ -1,6 +1,6 @@
 # Fallback Vision — 路线图
 
-> 最后更新: 2026-05-31 (v0.5.4)
+> 最后更新: 2026-06-01 (v0.6.0)
 
 ## ✅ 已完成
 
@@ -38,11 +38,16 @@
 - [x] 用户自定义 Base URL
 - [x] 用户自定义模型名称
 - [x] 保存并重启按钮
+- [x] 请求指标追踪（总请求数、视觉回退率、平均延迟）
+- [x] Ring Buffer 日志查看（最近 200 条）
 
-### MiMo 搜索适配
+### 搜索系统
 - [x] 检测主模型是否为 MiMo 系列（基于 API 行为，非模型名称）
 - [x] MiMo 模型时显示提示文字：「本程序已适配 MiMo 搜索」
-- [x] 本地 web_search / web_fetch 处理（DuckDuckGo）
+- [x] 四后端混合搜索（Bing / Sogou / Brave / Google 并行竞赛）
+- [x] 时效性过滤（`day` / `week` / `month`，各后端适配）
+- [x] 智能查询增强（"最新/latest"关键词自动启用时效过滤）
+- [x] 本地 web_search / web_fetch 处理
 - [x] 非 MiMo 模型不显示、不拦截
 
 ### cc-switch 集成
@@ -59,19 +64,19 @@
 - [x] Windows .cmd 脚本
 
 ### 测试
-- [x] 8 个测试文件，覆盖核心功能
+- [x] 8 个测试文件，62 个测试用例全部通过
 - [x] Anthropic 协议转换测试
 - [x] 图片检测测试
 - [x] 路由测试
 - [x] 搜索拦截测试
 - [x] 流式传输测试
+- [x] 设置持久化测试
 
 ## 🔜 待实现
 
 ### P1 — 应该做
 - [ ] Web UI 美化（更好的视觉设计）
-- [ ] 请求日志与统计（Token 消耗、延迟、Fallback 触发次数）
-- [ ] Dashboard 实时状态刷新
+- [ ] Dashboard 实时状态刷新（WebSocket）
 - [ ] 更多 Provider 预设（Gemini、Grok 等）
 
 ### P2 — 可以做
@@ -79,3 +84,4 @@
 - [ ] Routing Strategy（cost / latency / quality / balanced 策略）
 - [ ] Provider Presets（已知厂商推荐配置模板）
 - [ ] Dashboard 图表（Fallback 触发趋势、Provider 延迟图）
+- [ ] 搜索结果缓存（减少重复请求）

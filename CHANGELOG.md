@@ -1,5 +1,34 @@
 # Changelog
 
+## v0.6.0 (2026-06-01)
+
+### 混合搜索引擎
+- **四后端混合搜索**: Bing / Sogou / Brave / Google 四个搜索后端并行竞赛，最快返回结果的获胜
+- **时效性过滤**: 支持 `freshness` 参数（`day` / `week` / `month`），Google 用 `tbs=qdr:`，Bing 用 `filters=ex1`，Brave 用原生 API
+- **智能查询增强**: 查询含"最新/latest"等关键词时自动启用时效性过滤
+- **代理友好**: 搜索请求通过 `proxyFetch` 统一发出，兼容各种网络环境
+- **MiMo 工具适配**: `web_search` 工具 schema 增加 `freshness` 可选字段
+
+### Dashboard 可观测性
+- **请求指标追踪**: 每次请求记录协议类型、模型、延迟、是否触发视觉回退
+- **Dashboard 概览增强**: 显示总请求数、视觉回退触发率、平均延迟
+- **Ring Buffer 日志**: 最近 200 条日志保留，Dashboard 实时查看
+
+### GSAP CDN 回退
+- **双 CDN 策略**: 主用 jsdelivr（国内更快），`onerror` 回退到 cdnjs
+- **CSS 关键帧兜底**: GSAP 加载失败时 `.flow-node` 用 `nodeIn` 动画、`.card` / `.sb` 用 `fadeUp` 动画，确保 Data Flow 可视化始终可用
+
+### 测试
+- 搜索测试增加时效性过滤用例
+- 全部 62 个测试通过
+
+## v0.5.5 (2026-06-01)
+
+### 文档 & 部署
+- 全面更新所有文档（README、ARCHITECTURE、ROADMAP）
+- 修复 Dockerfile 构建问题
+- 创建 CHANGELOG
+
 ## v0.5.4 (2026-05-31)
 
 ### 核心修复
