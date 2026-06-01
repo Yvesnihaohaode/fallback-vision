@@ -95,9 +95,9 @@ const MAX_TOOL_ROUNDS = 3;
  */
 function detectFreshness(query: string): "day" | "week" | "month" | "year" | undefined {
   const q = query.toLowerCase();
-  if (/最新|最新版|最新模型|latest|recent|breaking|刚刚|刚才|today|tonight|now/.test(q)) return "month";
+  if (/今日|今天|today|tonight|now|刚刚|刚才/.test(q)) return "day";
   if (/本周|这周|this week|yesterday|昨天/.test(q)) return "week";
-  if (/今日|今天|today/.test(q)) return "day";
+  if (/最新|最新版|最新模型|latest|recent|breaking/.test(q)) return "month";
   if (/今年|this year/.test(q)) return "year";
   return undefined;
 }
