@@ -7,7 +7,7 @@
 <p align="center">
   <a href="https://www.npmjs.com/package/fallback-vision"><img alt="npm" src="https://img.shields.io/badge/npm-v0.6.0-blue"></a>
   <a href="https://github.com/Yvesnihaohaode/fallback-vision/blob/main/LICENSE"><img alt="license" src="https://img.shields.io/github/license/Yvesnihaohaode/fallback-vision"></a>
-  <a href="https://github.com/Yvesnihaohaode/fallback-vision/actions"><img alt="tests" src="https://img.shields.io/badge/tests-62%20passed-brightgreen"></a>
+  <a href="https://github.com/Yvesnihaohaode/fallback-vision"><img alt="node" src="https://img.shields.io/badge/node-%3E%3D20-brightgreen"></a>
 </p>
 
 <p align="center">
