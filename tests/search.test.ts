@@ -1,40 +1,40 @@
 import { describe, expect, it } from "vitest";
 
-// These tests verify the LOCAL search interceptor (SearXNG/DuckDuckGo).
-// Since tool passthrough is now the primary path (tools go directly to upstream),
-// these tests are marked as optional. They only matter if local search is enabled.
+// These tests verify the hybrid search system (Bing/Sogou/Brave).
+// Network-dependent tests are skipped by default — enable for integration validation.
 
-describe("Local search interceptor (fallback only)", () => {
-  it.skip("SearXNG returns search results", async () => {
-    // Skipped: tool passthrough is primary. Enable for local search validation.
-    const instances = ["https://search.sapti.me", "https://searx.be"];
-    for (const instance of instances) {
-      try {
-        const res = await fetch(`${instance}/search?q=test&format=json`, {
-          signal: AbortSignal.timeout(8000),
-        });
-        if (res.ok) { expect(true).toBe(true); return; }
-      } catch { continue; }
-    }
+describe("Hybrid search (integration)", () => {
+  it.skip("Bing search returns results", async () => {
+    const { bingBackend } = await import("../src/search/backends/bing.js");
+    const results = await bingBackend.search("test query", { limit: 3 }, AbortSignal.timeout(8000));
+    expect(results.length).toBeGreaterThan(0);
+    expect(results[0]).toHaveProperty("title");
+    expect(results[0]).toHaveProperty("url");
   });
 
-  it.skip("DuckDuckGo instant answer API", async () => {
-    // Skipped: tool passthrough is primary. Enable for local search validation.
-    const res = await fetch("https://api.duckduckgo.com/?q=test&format=json", {
-      signal: AbortSignal.timeout(8000),
-    });
-    expect(res.ok).toBe(true);
+  it.skip("Sogou search returns results", async () => {
+    const { sogouBackend } = await import("../src/search/backends/sogou.js");
+    const results = await sogouBackend.search("test query", { limit: 3 }, AbortSignal.timeout(8000));
+    expect(results.length).toBeGreaterThan(0);
   });
 
-  it("web_fetch can fetch httpbin", async () => {
-    // This test verifies basic fetch capability (used by interceptor)
-    try {
-      const res = await fetch("https://httpbin.org/html", { signal: AbortSignal.timeout(8000) });
-      const text = await res.text();
-      expect(text.length).toBeGreaterThan(0);
-    } catch {
-      // Network may be unavailable in sandbox — not a code bug
-      console.warn("⚠ httpbin unreachable (sandbox network restriction)");
-    }
+  it.skip("Brave search returns results (requires BRAVE_SEARCH_API_KEY)", async () => {
+    const { braveBackend } = await import("../src/search/backends/brave.js");
+    const results = await braveBackend.search("test query", { limit: 3 }, AbortSignal.timeout(8000));
+    expect(results.length).toBeGreaterThan(0);
+  });
+
+  it.skip("hybridSearch races backends", async () => {
+    const { hybridSearch } = await import("../src/search/hybrid.js");
+    const resp = await hybridSearch("test query");
+    expect(resp.results.length).toBeGreaterThan(0);
+    expect(resp.backend).toBeTruthy();
+    expect(resp.latencyMs).toBeGreaterThan(0);
+  });
+
+  it.skip("hybridSearch with freshness filter", async () => {
+    const { hybridSearch } = await import("../src/search/hybrid.js");
+    const resp = await hybridSearch("DeepSeek latest model", { freshness: "month" });
+    expect(resp.results.length).toBeGreaterThan(0);
   });
 });
