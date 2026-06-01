@@ -249,7 +249,7 @@ input:focus{outline:none;border-color:var(--border-focus);box-shadow:0 0 0 3px v
       <div id="overview-accordions"></div>
     </div>
 
-    ${isMiMo ? '<div class="info-box" data-i18n="mimo_search">MiMo native search enabled — web_search requests are sent directly to MiMo built-in search engine.</div>' : ''}
+    ${isMiMo ? '<div class="info-box" data-i18n="mimo_search">Hybrid search enabled — web_search/web_fetch handled locally with Bing/Sogou/Brave/Google (4 engines parallel race, fastest wins)</div>' : ''}
   </div>
 
   <!-- ==================== LOGS ==================== -->
@@ -314,7 +314,7 @@ input:focus{outline:none;border-color:var(--border-focus);box-shadow:0 0 0 3px v
     </div>
 
     <div id="ls-section" style="display:${isMiMo ? 'block' : 'none'}">
-      <div class="info-box" data-i18n="mimo_search">MiMo native search enabled — web_search requests are sent directly to MiMo built-in search engine.</div>
+      <div class="info-box" data-i18n="mimo_search">Hybrid search enabled — web_search/web_fetch handled locally with Bing/Sogou/Brave/Google (4 engines parallel race, fastest wins)</div>
     </div>
 
     <div style="margin-top:20px;display:flex;align-items:center;gap:14px">
@@ -344,7 +344,7 @@ input:focus{outline:none;border-color:var(--border-focus);box-shadow:0 0 0 3px v
       vision_tip: "Vision model must support images. Only vision-capable models shown.",
       save_restart: "Save & Restart", saving: "Saving...", saved: "Saved! Restarting...",
       no_reqs: "No requests yet", pause: "Pause", resume: "Resume",
-      log_all: "All", mimo_search: "MiMo native search enabled — web_search requests are sent directly to MiMo built-in search engine.",
+      log_all: "All", mimo_search: "Hybrid search enabled — web_search/web_fetch handled locally with Bing/Sogou/Brave/Google (4 engines race, fastest wins)",
       vision: "Vision", reasoning: "Reasoning", no_vision: "No Vision", no_reasoning: "No Reasoning",
       main_model_tag: "MAIN", vision_model_tag: "VISION", custom: "Custom", custom_tip: "Custom model name...",
       err_rate: "Error Rate", avg_latency: "Avg Latency", total_requests: "Total Requests", vision_fallbacks: "Vision Fallbacks"
@@ -361,7 +361,7 @@ input:focus{outline:none;border-color:var(--border-focus);box-shadow:0 0 0 3px v
       vision_tip: "视觉模型必须支持图片（Vision ✓）。仅显示支持视觉的模型。",
       save_restart: "保存并重启", saving: "保存中...", saved: "已保存！重启中...",
       no_reqs: "暂无请求", pause: "暂停", resume: "恢复",
-      log_all: "全部", mimo_search: "已启用 MiMo 原生搜索，web_search 请求将直接发送至 MiMo 内置搜索引擎。",
+      log_all: "全部", mimo_search: "已启用混合搜索 — web_search/web_fetch 由本地四引擎（Bing / Sogou / Brave / Google）并行竞赛，最快结果获胜",
       vision: "视觉", reasoning: "推理", no_vision: "无视觉", no_reasoning: "无推理",
       main_model_tag: "主模型", vision_model_tag: "视觉模型", custom: "自定义", custom_tip: "自定义模型名称...",
       err_rate: "错误率", avg_latency: "平均延迟", total_requests: "总请求数", vision_fallbacks: "视觉回退"
@@ -788,7 +788,7 @@ input:focus{outline:none;border-color:var(--border-focus);box-shadow:0 0 0 3px v
         baseUrl: document.getElementById("vu").value,
         modelName: document.getElementById("vm").value
       },
-      localSearchEnabled: false
+      localSearchEnabled: true
     };
     try {
       btn.classList.add("loading");
