@@ -136,15 +136,22 @@ canvas#bg-canvas{position:fixed;top:0;left:0;width:100%;height:100%;z-index:0;po
 label{display:block;color:var(--text-muted);font-size:12px;margin-bottom:5px;font-weight:500}
 input[type=text],input[type=password]{width:100%;background:var(--glass-bg);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 14px;color:var(--text);font-size:13px;transition:all .35s var(--spring);backdrop-filter:blur(8px)}
 input:focus{outline:none;border-color:var(--border-focus);box-shadow:0 0 0 3px var(--accent-glow),var(--shadow-sm)}
-.btn{padding:11px 28px;border-radius:var(--radius-sm);border:none;cursor:pointer;font-size:14px;font-weight:600;background:linear-gradient(135deg,var(--accent),#7c3aed);color:#fff;transition:all .35s var(--spring);position:relative;overflow:hidden;box-shadow:0 2px 12px var(--accent-glow)}
-.btn::before{content:'';position:absolute;inset:0;background:linear-gradient(135deg,rgba(255,255,255,.15),transparent 60%);opacity:0;transition:opacity .3s;pointer-events:none}
+.btn{min-width:140px;padding:11px 28px;border-radius:var(--radius-sm);border:none;cursor:pointer;font-size:14px;font-weight:600;background:linear-gradient(135deg,var(--accent),#7c3aed);color:#fff;transition:all .35s var(--spring);position:relative;overflow:hidden;box-shadow:0 2px 12px var(--accent-glow);display:inline-flex;align-items:center;justify-content:center;gap:8px}
 .btn:hover{box-shadow:0 4px 24px var(--accent-glow),0 0 0 1px rgba(var(--accent-rgb),.3);transform:translateY(-1px)}
-.btn:hover::before{opacity:1}
 .btn:active{transform:scale(.96) translateY(0);box-shadow:0 2px 8px var(--accent-glow)}
-.btn:disabled{opacity:.5;cursor:not-allowed;transform:none}
-.btn .spinner{display:none;width:16px;height:16px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .6s linear infinite;margin-right:6px}
-.btn.loading .spinner{display:inline-block}
-@keyframes spin{to{transform:rotate(360deg)}}
+.btn:disabled{cursor:not-allowed;transform:none}
+.btn .btn-progress{position:absolute;left:0;top:0;bottom:0;width:0;background:rgba(255,255,255,.12);transition:width 1.2s cubic-bezier(.4,0,.2,1);z-index:0;border-radius:var(--radius-sm)}
+.btn .btn-content{position:relative;z-index:1;display:inline-flex;align-items:center;gap:8px}
+.btn .btn-check{display:none;width:18px;height:18px}
+.btn .btn-check svg{width:100%;height:100%}
+.btn .btn-check path{stroke:#fff;stroke-width:3;fill:none;stroke-dasharray:24;stroke-dashoffset:24;animation:checkDraw .4s .3s ease forwards}
+@keyframes checkDraw{to{stroke-dashoffset:0}}
+.btn.saving .btn-progress{width:70%}
+.btn.done{background:var(--green);box-shadow:0 2px 12px var(--green-glow)}
+.btn.done .btn-progress{width:100%}
+.btn.done .btn-check{display:inline-block}
+#save-hint{display:none;color:var(--text-secondary);font-size:13px;animation:fadeUp .4s ease both}
+#save-hint.show{display:inline-block}
 
 /* ── Client toggle ── */
 .ct{display:flex;gap:0;background:var(--glass-bg);border:1px solid var(--border);border-radius:var(--radius-sm);padding:3px;width:fit-content;backdrop-filter:blur(12px)}
@@ -318,7 +325,14 @@ input:focus{outline:none;border-color:var(--border-focus);box-shadow:0 0 0 3px v
     </div>
 
     <div style="margin-top:20px;display:flex;align-items:center;gap:14px">
-      <button class="btn" id="btn-save"><span class="spinner"></span><span data-i18n="save_restart">Save & Restart</span></button>
+      <button class="btn" id="btn-save">
+        <div class="btn-progress"></div>
+        <span class="btn-content">
+          <span class="btn-check"><svg viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg></span>
+          <span class="btn-label" data-i18n="save_restart">Save</span>
+        </span>
+      </button>
+      <span id="save-hint"></span>
       <div id="msg"></div>
     </div>
   </div>
@@ -342,7 +356,9 @@ input:focus{outline:none;border-color:var(--border-focus);box-shadow:0 0 0 3px v
       provider: "Provider", model_name: "Model Name",
       pick_tip: "Click model to auto-fill. Vision badge = supports images, Reasoning badge = deep thinking.",
       vision_tip: "Vision model must support images. Only vision-capable models shown.",
-      save_restart: "Save & Restart", saving: "Saving...", saved: "Saved! Restarting...",
+      save_restart: "Save", saving: "Saving...", saved: "Restarting...",
+      save_hint_claude: "Open a new terminal and run <code>claude</code> to start Claude Code",
+      save_hint_codex: "Codex will restart automatically...",
       no_reqs: "No requests yet", pause: "Pause", resume: "Resume",
       log_all: "All", mimo_search: "Hybrid search enabled — web_search/web_fetch handled locally with Bing/Sogou/Brave/Google (4 engines race, fastest wins)",
       vision: "Vision", reasoning: "Reasoning", no_vision: "No Vision", no_reasoning: "No Reasoning",
@@ -359,7 +375,9 @@ input:focus{outline:none;border-color:var(--border-focus);box-shadow:0 0 0 3px v
       provider: "供应商", model_name: "模型名称",
       pick_tip: "点击模型自动填充。Vision = 支持图片，Reasoning = 深度推理。",
       vision_tip: "视觉模型必须支持图片（Vision ✓）。仅显示支持视觉的模型。",
-      save_restart: "保存并重启", saving: "保存中...", saved: "已保存！重启中...",
+      save_restart: "保存", saving: "保存中...", saved: "配置完成",
+      save_hint_claude: "请打开新终端输入 <code>claude</code> 启动 Claude Code",
+      save_hint_codex: "Codex 将自动重启...",
       no_reqs: "暂无请求", pause: "暂停", resume: "恢复",
       log_all: "全部", mimo_search: "已启用混合搜索 — web_search/web_fetch 由本地四引擎（Bing / Sogou / Brave / Google）并行竞赛，最快结果获胜",
       vision: "视觉", reasoning: "推理", no_vision: "无视觉", no_reasoning: "无推理",
@@ -764,10 +782,11 @@ input:focus{outline:none;border-color:var(--border-focus);box-shadow:0 0 0 3px v
     list.innerHTML = h || '<div style="padding:20px;text-align:center;color:var(--text-muted)">' + t("no_reqs") + '</div>';
   }
 
-  // === Save & Restart ===
+  // === Save ===
   document.getElementById("btn-save").addEventListener("click", async function() {
     var btn = this;
     var msg = document.getElementById("msg");
+    var hint = document.getElementById("save-hint");
     var mv = document.getElementById("mm").value;
     if (!mv) {
       msg.textContent = lang === "zh" ? "请输入主模型名称" : "Please enter a main model name";
@@ -791,10 +810,13 @@ input:focus{outline:none;border-color:var(--border-focus);box-shadow:0 0 0 3px v
       localSearchEnabled: true
     };
     try {
-      btn.classList.add("loading");
+      // Phase 1: Progress bar animation
+      btn.classList.add("saving");
       btn.disabled = true;
-      msg.textContent = t("saving");
-      msg.style.color = "var(--yellow)";
+      msg.textContent = "";
+      msg.style.color = "";
+      hint.classList.remove("show");
+
       var res = await fetch("/dashboard/api/settings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -804,17 +826,30 @@ input:focus{outline:none;border-color:var(--border-focus);box-shadow:0 0 0 3px v
       if (!r.ok) {
         msg.textContent = "Error: " + (r.error || "save failed");
         msg.style.color = "var(--red)";
-        btn.classList.remove("loading");
+        btn.classList.remove("saving");
         btn.disabled = false;
         return;
       }
-      msg.textContent = t("saved");
-      msg.style.color = "var(--green)";
-      await fetch("/dashboard/api/restart", { method: "POST" });
+
+      // Phase 2: Checkmark + done state
+      btn.classList.remove("saving");
+      btn.classList.add("done");
+
+      if (CC === "claude") {
+        // fv-claude: just save, user restarts manually
+        hint.innerHTML = t("save_hint_claude");
+        hint.classList.add("show");
+        msg.textContent = "";
+      } else {
+        // fv-codex: auto-restart
+        msg.textContent = t("save_hint_codex");
+        msg.style.color = "var(--text-secondary)";
+        await fetch("/dashboard/api/restart", { method: "POST" });
+      }
     } catch (err) {
       msg.textContent = "Network error: " + err.message;
       msg.style.color = "var(--red)";
-      btn.classList.remove("loading");
+      btn.classList.remove("saving", "done");
       btn.disabled = false;
     }
   });
