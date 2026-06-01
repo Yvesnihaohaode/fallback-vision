@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <a href="https://www.npmjs.com/package/fallback-vision"><img alt="npm" src="https://img.shields.io/npm/v/fallback-vision"></a>
+  <a href="https://www.npmjs.com/package/fallback-vision"><img alt="npm" src="https://img.shields.io/badge/npm-v0.6.0-blue"></a>
   <a href="https://github.com/Yvesnihaohaode/fallback-vision/blob/main/LICENSE"><img alt="license" src="https://img.shields.io/github/license/Yvesnihaohaode/fallback-vision"></a>
   <a href="https://github.com/Yvesnihaohaode/fallback-vision/actions"><img alt="tests" src="https://img.shields.io/badge/tests-62%20passed-brightgreen"></a>
 </p>
@@ -53,6 +53,9 @@ fv-claude   # Start service + configure Claude Code + open claude
 fv-codex    # Start service + configure Codex + open codex
 fv-stop     # Stop service + restore original config
 ```
+
+### cc-switch Integration
+`fv-claude` automatically backs up your Claude config (cc-switch, etc.) on start. `fv-stop` restores it on shutdown. No disruption to your existing setup.
 
 ## Quick Start
 

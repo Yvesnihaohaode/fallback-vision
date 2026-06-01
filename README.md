@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <a href="https://www.npmjs.com/package/fallback-vision"><img alt="npm" src="https://img.shields.io/npm/v/fallback-vision"></a>
+  <a href="https://www.npmjs.com/package/fallback-vision"><img alt="npm" src="https://img.shields.io/badge/npm-v0.6.0-blue"></a>
   <a href="https://github.com/Yvesnihaohaode/fallback-vision/blob/main/LICENSE"><img alt="license" src="https://img.shields.io/github/license/Yvesnihaohaode/fallback-vision"></a>
   <a href="https://github.com/Yvesnihaohaode/fallback-vision/actions"><img alt="tests" src="https://img.shields.io/badge/tests-62%20passed-brightgreen"></a>
   <a href="https://github.com/Yvesnihaohaode/fallback-vision"><img alt="stars" src="https://img.shields.io/github/stars/Yvesnihaohaode/fallback-vision?style=social"></a>
@@ -54,6 +54,9 @@ fv-claude   # 启动服务 + 配置 Claude Code + 打开 claude
 fv-codex    # 启动服务 + 配置 Codex + 打开 codex
 fv-stop     # 停止服务 + 恢复原始配置
 ```
+
+### cc-switch 集成
+`fv-claude` 启动时自动备份你的 Claude 配置（cc-switch 等），`fv-stop` 停止时自动恢复。不影响现有配置。
 
 ## Quick Start
 
