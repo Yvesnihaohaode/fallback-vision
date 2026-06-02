@@ -7,6 +7,8 @@ export interface RequestRecord {
   latencyMs: number;
   usedVision: boolean;
   ok: boolean;
+  inputTokens: number;
+  outputTokens: number;
 }
 
 interface Metrics {

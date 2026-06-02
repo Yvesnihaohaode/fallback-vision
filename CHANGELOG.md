@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.6.4 (2026-06-02)
+
+### Dashboard 液态玻璃重设计
+- **iOS 26 Liquid Glass**: 全面升级 CSS 为液态玻璃风格 — `backdrop-filter: blur(24px) saturate(180%) brightness(1.08)`，非对称边框（上亮下暗）模拟边缘高光，对角线渐变镜面反射
+- **暗色/亮色双模式**: 两套完整的液态玻璃主题变量
+- **药丸形状组件**: 按钮、标签、切换器统一 `border-radius: 50px`
+- **GSAP Spring 动画**: 卡片入场 `back.out(1.4)`、流程节点 `elastic.out(1, 0.6)` 弹性动画
+
+### Token 消耗追踪
+- **按模型统计**: 新增 `inputTokens` / `outputTokens` 到 RequestRecord，每次请求自动记录
+- **持久化存储**: `~/.fallback-vision/token-stats.json` 按模型分组，含每日明细（保留 90 天）
+- **防抖写入**: 10 秒合并写入，进程退出时自动 flush
+- **Dashboard 统计页**: 新增 Token Consumption 卡片 — 模型切换器（水平药丸按钮）+ 请求数/输入/输出/总 Token 统计 + 每日柱状图
+- **新 API**: `GET /dashboard/api/token-stats` 返回全量 token 统计
+
 ## v0.6.3 (2026-06-01)
 
 ### Save 按钮重设计

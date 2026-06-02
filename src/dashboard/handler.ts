@@ -7,6 +7,7 @@ import { loadSettings, saveSettings } from "../config/settings.js";
 import { sendIndex } from "./pages/index.js";
 import { log, getRecentLogs } from "../util/logger.js";
 import { getMetrics } from "../util/metrics.js";
+import { getTokenStats } from "../util/token-stats.js";
 
 const CLAUDE_SETTINGS = join(homedir(), ".claude", "settings.json");
 const FV_DIR = join(homedir(), ".fallback-vision");
@@ -96,6 +97,14 @@ export function handleDashboard(cfg: GatewayConfig, req: IncomingMessage, res: S
     const metrics = getMetrics();
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify(metrics));
+    return;
+  }
+
+  // API: Token stats (per-model usage)
+  if (req.method === "GET" && url === "/dashboard/api/token-stats") {
+    const stats = getTokenStats();
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(stats));
     return;
   }
 

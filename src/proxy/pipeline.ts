@@ -48,6 +48,7 @@ export interface PipelineStreamResult {
   mainModelId: string;
   latencyMs: number;
   stream: AsyncGenerator<string, void, unknown>;
+  usage?: { inputTokens: number; outputTokens: number };
 }
 
 // ============================================================================
@@ -676,8 +677,16 @@ async function consumeAnthropicSSE(
 async function* bufferAndInterceptStream(
   rawStream: AsyncGenerator<string, void, unknown>,
   requestModel: string,
+  usageRef?: { inputTokens: number; outputTokens: number },
 ): AsyncGenerator<string, void, unknown> {
   const response = await consumeAnthropicSSE(rawStream, requestModel);
+
+  // Capture usage for metrics
+  if (usageRef) {
+    const u = response.usage as Record<string, number> | undefined;
+    usageRef.inputTokens = u?.input_tokens ?? 0;
+    usageRef.outputTokens = u?.output_tokens ?? 0;
+  }
 
   if (!isMiMoModel(requestModel)) {
     const modified = await interceptWebFetchResponse(response);
@@ -1071,6 +1080,7 @@ export async function executePipelineStream(
   const { provider, targetModel, mainModelId, visionModelId, usedVision } = resolveTarget(registry, protocol, body);
 
   let stream: AsyncGenerator<string, void, unknown>;
+  const usageRef = { inputTokens: 0, outputTokens: 0 };
 
   // MiMo: buffer response to handle tool-call loop, then stream final answer
   if (isMiMoModel() && protocol === "anthropic") {
@@ -1095,6 +1105,10 @@ export async function executePipelineStream(
       });
       anthropicResponse.content = content;
     }
+    // Capture MiMo usage from chat response
+    const u = (chatResponse as Record<string, unknown>).usage as Record<string, number> | undefined;
+    usageRef.inputTokens = u?.prompt_tokens ?? 0;
+    usageRef.outputTokens = u?.completion_tokens ?? 0;
     stream = bufferedResponseToSSE(
       anthropicResponse as unknown as Record<string, unknown>,
       requestModel || targetModel,
@@ -1108,7 +1122,7 @@ export async function executePipelineStream(
       { ...body, model: targetModel },
       "anthropic",
     );
-    stream = bufferAndInterceptStream(rawStream, requestModel || targetModel);
+    stream = bufferAndInterceptStream(rawStream, requestModel || targetModel, usageRef);
   } else if (protocol === "anthropic") {
     // OpenAI SSE → Anthropic SSE → buffer → intercept web_fetch → re-stream
     const anthropicBody = body as unknown as AnthropicRequest;
@@ -1121,7 +1135,7 @@ export async function executePipelineStream(
       chatBody,
     );
     const anthropicStream = openaiSSEToAnthropicSSE(upstreamStream, requestModel || targetModel, undefined, targetModel);
-    stream = bufferAndInterceptStream(anthropicStream, requestModel || targetModel);
+    stream = bufferAndInterceptStream(anthropicStream, requestModel || targetModel, usageRef);
   } else {
     const chatBody = { ...body, model: targetModel, stream: true };
     const rawStream = callUpstreamChatStreaming(
@@ -1140,5 +1154,6 @@ export async function executePipelineStream(
     mainModelId,
     latencyMs: Date.now() - startMs,
     stream,
+    usage: usageRef,
   };
 }

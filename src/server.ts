@@ -11,6 +11,7 @@ import { log } from "./util/logger.js";
 import { handleDashboard } from "./dashboard/handler.js";
 import { loadSettings } from "./config/settings.js";
 import { recordRequest } from "./util/metrics.js";
+import { loadTokenStats, recordTokenUsage } from "./util/token-stats.js";
 
 // Canonical Anthropic model IDs that Claude Code / Claude Desktop expect
 const CANONICAL_MODELS = [
@@ -25,6 +26,8 @@ const CANONICAL_MODELS = [
 ];
 
 export function startServer(cfg: GatewayConfig): Server {
+  loadTokenStats();
+
   const server = createServer((req, res) => {
     // Wrap everything in a top-level catch to prevent process crash
     handleAll(cfg, req, res).catch((err) => {
@@ -156,7 +159,7 @@ async function handleRequest(
       clearInterval(keepAlive);
       const msg = err instanceof Error ? err.message : "unknown";
       log.error("pipeline error (stream)", { error: msg });
-      recordRequest({ protocol, model: model ?? "unknown", latencyMs: 0, usedVision: false, ok: false });
+      recordRequest({ protocol, model: model ?? "unknown", latencyMs: 0, usedVision: false, ok: false, inputTokens: 0, outputTokens: 0 });
       if (!res.destroyed) {
         res.write(`event: error\ndata: ${JSON.stringify({ error: { message: msg } })}\n\n`);
         res.end();
@@ -192,7 +195,9 @@ async function handleRequest(
         totalMs: result.latencyMs,
       });
     }
-    recordRequest({ protocol: result.protocol, model: result.mainModelId, latencyMs: result.latencyMs, usedVision: result.usedVision, ok: streamOk });
+    const streamTokens = result.usage ?? { inputTokens: 0, outputTokens: 0 };
+    recordRequest({ protocol: result.protocol, model: result.mainModelId, latencyMs: result.latencyMs, usedVision: result.usedVision, ok: streamOk, inputTokens: streamTokens.inputTokens, outputTokens: streamTokens.outputTokens });
+    recordTokenUsage(result.mainModelId, streamTokens.inputTokens, streamTokens.outputTokens);
   } else {
     // ── Non-streaming ──
     let result;
@@ -201,7 +206,7 @@ async function handleRequest(
     } catch (err) {
       const msg = err instanceof Error ? err.message : "unknown";
       log.error("pipeline error", { error: msg });
-      recordRequest({ protocol, model: model ?? "unknown", latencyMs: 0, usedVision: false, ok: false });
+      recordRequest({ protocol, model: model ?? "unknown", latencyMs: 0, usedVision: false, ok: false, inputTokens: 0, outputTokens: 0 });
       throw err;
     }
 
@@ -212,7 +217,11 @@ async function handleRequest(
       mainModel: result.mainModelId,
       totalMs: result.latencyMs,
     });
-    recordRequest({ protocol: result.protocol, model: result.mainModelId, latencyMs: result.latencyMs, usedVision: result.usedVision, ok: true });
+    const respUsage = (result.response as Record<string, unknown>).usage as Record<string, number> | undefined;
+    const nonStreamIn = respUsage?.input_tokens ?? 0;
+    const nonStreamOut = respUsage?.output_tokens ?? 0;
+    recordRequest({ protocol: result.protocol, model: result.mainModelId, latencyMs: result.latencyMs, usedVision: result.usedVision, ok: true, inputTokens: nonStreamIn, outputTokens: nonStreamOut });
+    recordTokenUsage(result.mainModelId, nonStreamIn, nonStreamOut);
 
     res.writeHead(200, {
       "Content-Type": "application/json",
