@@ -103,6 +103,110 @@ function detectFreshness(query: string): "day" | "week" | "month" | "year" | und
   return undefined;
 }
 
+/**
+ * Intercept image blocks inside tool_result content and replace with vision model descriptions.
+ *
+ * When Claude Code's Read tool reads an image file, the tool_result contains base64 image data.
+ * MiMo can't process images, so we send each image to the vision model (e.g. mimo-v2.5) and
+ * replace the image block with a text description.
+ *
+ * Only runs for MiMo models. Non-MiMo models use the existing resolveTarget vision routing.
+ */
+async function interceptImagesInToolResults(
+  body: AnthropicRequest,
+  registry: ProviderRegistry,
+): Promise<void> {
+  const visionResult = registry.findVisionModel();
+  if (!visionResult) {
+    log.warn("[vision-fallback] no vision model available for tool_result images");
+    return;
+  }
+
+  const { provider: visionProvider, model: visionModel } = visionResult;
+
+  for (const msg of body.messages) {
+    if (msg.role !== "user") continue;
+    if (!Array.isArray(msg.content)) continue;
+
+    for (const block of msg.content) {
+      if (block.type !== "tool_result") continue;
+      if (!Array.isArray(block.content)) continue;
+
+      let hasImages = false;
+      for (const inner of block.content) {
+        if (inner.type === "image") { hasImages = true; break; }
+      }
+      if (!hasImages) continue;
+
+      // Process each image block in the tool_result
+      const newContent: typeof block.content = [];
+      for (const inner of block.content) {
+        if (inner.type !== "image") {
+          newContent.push(inner);
+          continue;
+        }
+
+        const src = inner.source;
+        const imageUrl = src.type === "base64" && src.data
+          ? `data:${src.media_type ?? "image/png"};base64,${src.data}`
+          : src.type === "url" && src.url
+            ? src.url
+            : "";
+
+        if (!imageUrl) {
+          newContent.push(inner);
+          continue;
+        }
+
+        log.info("[vision-fallback] intercepting image in tool_result", {
+          visionModel: visionModel.id,
+          provider: visionProvider.config.id,
+        });
+
+        try {
+          const visionBody = {
+            model: visionModel.id,
+            messages: [{
+              role: "user",
+              content: [
+                { type: "image_url", image_url: { url: imageUrl } },
+                { type: "text", text: "Describe this image in detail. Focus on text content, UI elements, diagrams, and any information that would help someone understand the image without seeing it. Be concise but complete." },
+              ],
+            }],
+            max_tokens: 1024,
+            temperature: 0,
+          };
+
+          const resp = await callUpstreamChat(
+            visionProvider.config.baseUrl,
+            visionProvider.config.apiKey,
+            visionBody,
+            visionProvider.config.wireFormat,
+          );
+
+          const choices = (resp as Record<string, unknown>).choices as Array<Record<string, unknown>> | undefined;
+          const description = (choices?.[0]?.message as Record<string, unknown>)?.content as string ?? "";
+
+          if (description) {
+            log.info("[vision-fallback] got description", { chars: description.length });
+            newContent.push({ type: "text", text: `[Image description] ${description}` });
+          } else {
+            log.warn("[vision-fallback] empty description, keeping original image");
+            newContent.push(inner);
+          }
+        } catch (err) {
+          log.warn("[vision-fallback] vision model failed, keeping original image", {
+            error: (err as Error).message,
+          });
+          newContent.push(inner);
+        }
+      }
+
+      block.content = newContent;
+    }
+  }
+}
+
 /** Append web_search + web_fetch tools for MiMo, preserving Claude Code native tools.
  *  MiMo uses these for local search/fetch; other tools pass through to Claude Code. */
 function injectMiMoTools(body: AnthropicRequest): void {
@@ -951,6 +1055,7 @@ export async function executePipeline(
     // Only MiMo: intercept search locally via tool-call loop
     if (isMiMoModel()) {
       injectMiMoTools(anthropicBody);
+      await interceptImagesInToolResults(anthropicBody, registry);
     }
     // All other models: pass through with native search (if available)
   }
@@ -1063,6 +1168,7 @@ export async function executePipelineStream(
     // Only MiMo: intercept search locally via tool-call loop
     if (isMiMoModel()) {
       injectMiMoTools(anthropicBody);
+      await interceptImagesInToolResults(anthropicBody, registry);
     }
     // All other models: pass through with native search (if available)
   }
