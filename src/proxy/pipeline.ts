@@ -106,9 +106,15 @@ function detectFreshness(query: string): "day" | "week" | "month" | "year" | und
 /** Append web_search + web_fetch tools for MiMo, preserving Claude Code native tools.
  *  MiMo uses these for local search/fetch; other tools pass through to Claude Code. */
 function injectMiMoTools(body: AnthropicRequest): void {
-  // Remove native web_search_20250305 — MiMo can't handle it (it's Anthropic-only).
-  // We replace it with function-style web_search that runs locally via mimoToolCallLoop.
-  const existing = (body.tools ?? []).filter((t) => t.type !== "web_search_20250305");
+  // Remove native tools that MiMo can't use:
+  // - web_search_20250305: Anthropic server-side search (MiMo can't handle it)
+  // - WebSearch: Claude Code native search (goes to Anthropic, not our local engine)
+  // - Fetch: Claude Code native fetch (blocked by domain verification in China)
+  // Replace with function-style web_search/web_fetch that run locally via mimoToolCallLoop.
+  const NATIVE_TOOL_NAMES = new Set(["WebSearch", "Fetch"]);
+  const existing = (body.tools ?? []).filter(
+    (t) => t.type !== "web_search_20250305" && !NATIVE_TOOL_NAMES.has(t.name),
+  );
   body.tools = [...existing, MIMO_WEB_SEARCH_TOOL, MIMO_WEB_FETCH_TOOL];
 }
 
@@ -942,19 +948,11 @@ export async function executePipeline(
   if (protocol === "anthropic") {
     const anthropicBody = body as unknown as AnthropicRequest;
 
-    // DeepSeek: Anthropic endpoint with native web_search_20250305 → skip
-    if (hasWebSearchTools(anthropicBody.tools) && isDeepSeekModel()) {
-      // Let DeepSeek handle search natively — fall through to normal call
-    }
-    // Non-DeepSeek models with web_search_20250305: intercept locally
-    else if (hasWebSearchTools(anthropicBody.tools) && !isMiMoModel()) {
-      return interceptWebSearch(anthropicBody, requestModel, startMs);
-    }
-
-    // MiMo: inject web_search + web_fetch tools and run tool-call loop
+    // Only MiMo: intercept search locally via tool-call loop
     if (isMiMoModel()) {
       injectMiMoTools(anthropicBody);
     }
+    // All other models: pass through with native search (if available)
   }
 
   const { provider, targetModel, mainModelId, visionModelId, usedVision } = resolveTarget(registry, protocol, body);
@@ -1062,19 +1060,11 @@ export async function executePipelineStream(
   if (protocol === "anthropic") {
     const anthropicBody = body as unknown as AnthropicRequest;
 
-    // DeepSeek: let it handle search natively
-    if (hasWebSearchTools(anthropicBody.tools) && isDeepSeekModel()) {
-      // fall through
-    }
-    // Non-DeepSeek, non-MiMo with web_search_20250305: intercept locally
-    else if (hasWebSearchTools(anthropicBody.tools) && !isMiMoModel()) {
-      return interceptWebSearchStream(anthropicBody, requestModel, startMs);
-    }
-
-    // MiMo: inject tools and run tool-call loop (buffered, then stream)
+    // Only MiMo: intercept search locally via tool-call loop
     if (isMiMoModel()) {
       injectMiMoTools(anthropicBody);
     }
+    // All other models: pass through with native search (if available)
   }
 
   const { provider, targetModel, mainModelId, visionModelId, usedVision } = resolveTarget(registry, protocol, body);

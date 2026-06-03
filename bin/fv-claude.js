@@ -214,6 +214,20 @@ async function main() {
     }
   }, 800);
 
+  // Watchdog: 每 30 秒健康检查，proxy 挂了自动拉起
+  var watchdog = setInterval(async function() {
+    var alive = await checkHealth(PORT, 5000);
+    if (!alive) {
+      console.warn("\n⚠️  Proxy 进程无响应，自动重启中...");
+      var ok = await startAndConfigure(root, false);
+      if (ok) {
+        console.log("\n✅ Proxy 已自动恢复");
+      } else {
+        console.error("\n❌ Proxy 自动恢复失败");
+      }
+    }
+  }, 30000);
+
   // 每 5 秒验证配置（防止外部覆盖）
   var configGuard = setInterval(function() {
     try {
@@ -230,8 +244,8 @@ async function main() {
   console.log("\n🌐 Web UI: http://127.0.0.1:" + PORT + "/");
   console.log("\n🤖 配置完成！请打开新终端输入: claude\n");
 
-  process.on("SIGINT", function() { clearInterval(watcher); clearInterval(configGuard); process.exit(0); });
-  process.on("SIGTERM", function() { clearInterval(watcher); clearInterval(configGuard); process.exit(0); });
+  process.on("SIGINT", function() { clearInterval(watcher); clearInterval(configGuard); clearInterval(watchdog); process.exit(0); });
+  process.on("SIGTERM", function() { clearInterval(watcher); clearInterval(configGuard); clearInterval(watchdog); process.exit(0); });
 }
 
 main().catch(function(e) { console.error("❌ 错误:", e); process.exit(1); });
