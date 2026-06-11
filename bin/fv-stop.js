@@ -14,18 +14,30 @@ const CLAUDE_SETTINGS_BACKUP = join(FV_DIR, "claude-settings-backup.json");
 
 console.log("\n⏹  Fallback Vision — 停止服务\n");
 
-// Kill server — by port (most reliable) + PID file (fallback)
+// Kill ALL fallback-vision processes — server, fv-claude managers, everything
 const PORT = Number(process.env.FALLBACK_VISION_PORT) || 8789;
 if (platform() === "win32") {
   spawnSync("taskkill", ["/f", "/fi", "WINDOWTITLE eq fallback*"], { stdio: "ignore" });
 } else {
-  // Primary: kill by port number
+  // Kill by port number (server)
   try {
     const result = spawnSync("lsof", ["-ti:" + PORT], { encoding: "utf-8" });
     const pids = (result.stdout || "").trim().split("\n").filter(Boolean);
     for (const pid of pids) {
       const p = Number(pid);
       if (p > 0) {
+        try { process.kill(p, "SIGTERM"); } catch(e) {}
+      }
+    }
+  } catch(e) {}
+  // Kill all fv-claude / fallback-vision node processes (watchdog, config guard, etc.)
+  try {
+    const psResult = spawnSync("pgrep", ["-f", "fv-claude|fallback-vision"], { encoding: "utf-8" });
+    const allPids = (psResult.stdout || "").trim().split("\n").filter(Boolean);
+    for (const pid of allPids) {
+      const p = Number(pid);
+      // Don't kill ourselves
+      if (p > 0 && p !== process.pid) {
         try { process.kill(p, "SIGTERM"); } catch(e) {}
       }
     }
@@ -88,6 +100,8 @@ if (!restored) {
       settings.env.ANTHROPIC_BASE_URL = mainModel.baseUrl;
       settings.env.ANTHROPIC_AUTH_TOKEN = mainModel.apiKey;
       settings.env.ANTHROPIC_MODEL = mainModel.modelName || "unknown";
+      delete settings.env.FV_CLAUDE;
+      delete settings.env.FV_MAIN_MODEL;
       writeFileSync(CLAUDE_SETTINGS, JSON.stringify(settings, null, 2));
       console.log("♻️  已从 FV 配置重建: " + mainModel.baseUrl + " (模型: " + (mainModel.modelName || "unknown") + ")");
       restored = true;
@@ -107,6 +121,8 @@ if (!restored) {
       delete s.env.ANTHROPIC_BASE_URL;
       delete s.env.ANTHROPIC_AUTH_TOKEN;
       delete s.env.ANTHROPIC_MODEL;
+      delete s.env.FV_CLAUDE;
+      delete s.env.FV_MAIN_MODEL;
     }
     writeFileSync(CLAUDE_SETTINGS, JSON.stringify(s, null, 2));
     console.log("   已清理代理环境变量");

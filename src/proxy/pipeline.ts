@@ -89,6 +89,209 @@ const MIMO_WEB_FETCH_TOOL: AnthropicTool = {
 
 const MAX_TOOL_ROUNDS = 3;
 
+// ============================================================================
+// OpenAI Responses API ↔ Chat Completions conversion
+//
+// Codex sends Responses API format (input/messages), but upstream providers
+// expect Chat Completions format. We convert before sending upstream and
+// convert the response back.
+// ============================================================================
+
+/** Detect if a request body is in Responses API format (has `input` field) */
+function isResponsesAPI(body: Record<string, unknown>): boolean {
+  return "input" in body && !("messages" in body);
+}
+
+/** Convert Responses API request to Chat Completions format */
+function responsesToChatCompletions(body: Record<string, unknown>): Record<string, unknown> {
+  const messages: Array<Record<string, unknown>> = [];
+
+  // System instructions → system message
+  if (body.instructions && typeof body.instructions === "string") {
+    messages.push({ role: "system", content: body.instructions });
+  }
+
+  // input → user messages
+  const input = body.input;
+  if (typeof input === "string") {
+    messages.push({ role: "user", content: input });
+  } else if (Array.isArray(input)) {
+    for (const item of input) {
+      if (typeof item === "string") {
+        messages.push({ role: "user", content: item });
+      } else if (item && typeof item === "object") {
+        const role = (item.role as string) || "user";
+        // item could be { type: "message", role, content } or { type: "input_text", text }
+        if (item.type === "message" && item.content) {
+          messages.push({ role, content: item.content });
+        } else if (item.type === "input_text" && item.text) {
+          messages.push({ role, content: item.text });
+        } else if (item.type === "input_image" && item.image_url) {
+          messages.push({
+            role,
+            content: [{ type: "image_url", image_url: { url: item.image_url } }],
+          });
+        } else if (item.text) {
+          messages.push({ role, content: item.text });
+        } else if (item.content) {
+          messages.push({ role, content: item.content });
+        }
+      }
+    }
+  }
+
+  if (messages.length === 0) {
+    messages.push({ role: "user", content: "" });
+  }
+
+  // Build Chat Completions body
+  const chatBody: Record<string, unknown> = {
+    model: body.model,
+    messages,
+    stream: body.stream ?? false,
+  };
+
+  // Optional params
+  if (body.temperature !== undefined) chatBody.temperature = body.temperature;
+  if (body.max_output_tokens !== undefined) chatBody.max_tokens = body.max_output_tokens;
+  if (body.top_p !== undefined) chatBody.top_p = body.top_p;
+  if (body.stop !== undefined) chatBody.stop = body.stop;
+
+  // Convert tools format: Responses API uses { type: "function", name, ... }
+  // Chat Completions uses { type: "function", function: { name, parameters, ... } }
+  if (Array.isArray(body.tools) && body.tools.length > 0) {
+    chatBody.tools = body.tools.map((t: Record<string, unknown>) => {
+      if (t.type === "function") {
+        return {
+          type: "function",
+          function: {
+            name: t.name,
+            description: t.description,
+            parameters: t.parameters,
+            strict: t.strict,
+          },
+        };
+      }
+      return t;
+    });
+  }
+
+  if (body.tool_choice !== undefined) chatBody.tool_choice = body.tool_choice;
+  if (body.parallel_tool_calls !== undefined) chatBody.parallel_tool_calls = body.parallel_tool_calls;
+
+  return chatBody;
+}
+
+/** Convert Chat Completions response back to Responses API format */
+function chatCompletionsToResponses(
+  chatResponse: Record<string, unknown>,
+  requestModel: string,
+): Record<string, unknown> {
+  const choices = chatResponse.choices as Array<Record<string, unknown>> | undefined;
+  const choice = choices?.[0];
+  const msg = (choice?.message ?? {}) as Record<string, unknown>;
+  const usage = chatResponse.usage as Record<string, number> | undefined;
+
+  // Build output items
+  const output: Array<Record<string, unknown>> = [];
+
+  // Message output
+  if (msg.content) {
+    output.push({
+      type: "message",
+      id: `msg_${Date.now().toString(36)}`,
+      role: "assistant",
+      status: "completed",
+      content: [{ type: "output_text", text: msg.content }],
+    });
+  }
+
+  // Tool calls → function_call output items
+  if (Array.isArray(msg.tool_calls)) {
+    for (const tc of msg.tool_calls) {
+      const fn = tc.function as Record<string, unknown> | undefined;
+      output.push({
+        type: "function_call",
+        id: tc.id || `fc_${Date.now().toString(36)}`,
+        call_id: tc.id || `call_${Date.now().toString(36)}`,
+        name: fn?.name ?? "unknown",
+        arguments: typeof fn?.arguments === "string" ? fn.arguments : JSON.stringify(fn?.arguments ?? {}),
+        status: "completed",
+      });
+    }
+  }
+
+  const finishReason = (choice?.finish_reason as string) ?? "stop";
+  const responseStatus = finishReason === "tool_calls" ? "requires_action" : "completed";
+
+  const response: Record<string, unknown> = {
+    id: `resp_${Date.now().toString(36)}`,
+    object: "response",
+    created_at: Math.floor(Date.now() / 1000),
+    model: requestModel,
+    status: responseStatus,
+    output,
+    usage: {
+      input_tokens: usage?.prompt_tokens ?? 0,
+      output_tokens: usage?.completion_tokens ?? 0,
+      total_tokens: (usage?.prompt_tokens ?? 0) + (usage?.completion_tokens ?? 0),
+    },
+  };
+
+  // If requires_action (tool calls), include required_action
+  if (responseStatus === "requires_action") {
+    response.required_action = {
+      type: "submit_tool_outputs",
+      submit_tool_outputs: {
+        tool_calls: (msg.tool_calls as Array<Record<string, unknown>>).map((tc) => {
+          const fn = tc.function as Record<string, unknown> | undefined;
+          return {
+            id: tc.id,
+            type: "function",
+            name: fn?.name,
+            arguments: typeof fn?.arguments === "string" ? fn.arguments : JSON.stringify(fn?.arguments ?? {}),
+          };
+        }),
+      },
+    };
+  }
+
+  return response;
+}
+
+/** Convert Responses API tool call results to Chat Completions tool messages */
+function toolOutputsToChatMessages(
+  toolCalls: Array<Record<string, unknown>>,
+  toolOutputs: Array<Record<string, unknown>>,
+): Array<Record<string, unknown>> {
+  const result: Array<Record<string, unknown>> = [];
+
+  // Assistant message with tool calls
+  result.push({
+    role: "assistant",
+    content: null,
+    tool_calls: toolCalls.map((tc) => ({
+      id: tc.id,
+      type: "function",
+      function: {
+        name: tc.name,
+        arguments: typeof tc.arguments === "string" ? tc.arguments : JSON.stringify(tc.arguments ?? {}),
+      },
+    })),
+  });
+
+  // Tool result messages
+  for (const output of toolOutputs) {
+    result.push({
+      role: "tool",
+      tool_call_id: output.call_id,
+      content: typeof output.output === "string" ? output.output : JSON.stringify(output.output ?? ""),
+    });
+  }
+
+  return result;
+}
+
 /**
  * Detect whether a query implies a freshness requirement based on keywords.
  * Returns "week" for breaking/current queries, "month" for recent updates,
@@ -111,6 +314,9 @@ function detectFreshness(query: string): "day" | "week" | "month" | "year" | und
  * replace the image block with a text description.
  *
  * Only runs for MiMo models. Non-MiMo models use the existing resolveTarget vision routing.
+ *
+ * CRITICAL: anthropicToChat filters tool_result content to ONLY text blocks. If we don't
+ * replace every image with text here, the image data is silently dropped and MiMo sees nothing.
  */
 async function interceptImagesInToolResults(
   body: AnthropicRequest,
@@ -123,6 +329,9 @@ async function interceptImagesInToolResults(
   }
 
   const { provider: visionProvider, model: visionModel } = visionResult;
+  let totalImages = 0;
+  let replacedImages = 0;
+  let failedImages = 0;
 
   for (const msg of body.messages) {
     if (msg.role !== "user") continue;
@@ -146,7 +355,15 @@ async function interceptImagesInToolResults(
           continue;
         }
 
+        totalImages++;
         const src = inner.source;
+        if (!src) {
+          log.warn("[vision-fallback] image block has no source, replacing with placeholder");
+          newContent.push({ type: "text", text: "[Image description] (image received but source data unavailable)" });
+          failedImages++;
+          continue;
+        }
+
         const imageUrl = src.type === "base64" && src.data
           ? `data:${src.media_type ?? "image/png"};base64,${src.data}`
           : src.type === "url" && src.url
@@ -154,56 +371,85 @@ async function interceptImagesInToolResults(
             : "";
 
         if (!imageUrl) {
-          newContent.push(inner);
+          log.warn("[vision-fallback] image source has no data/url, replacing with placeholder", {
+            sourceType: src.type,
+          });
+          newContent.push({ type: "text", text: "[Image description] (image received but could not extract source)" });
+          failedImages++;
           continue;
         }
 
-        log.info("[vision-fallback] intercepting image in tool_result", {
+        log.info("[vision-fallback] describing image", {
+          imageIndex: totalImages,
           visionModel: visionModel.id,
-          provider: visionProvider.config.id,
+          dataLen: src.type === "base64" ? src.data?.length : undefined,
         });
 
-        try {
-          const visionBody = {
-            model: visionModel.id,
-            messages: [{
-              role: "user",
-              content: [
-                { type: "image_url", image_url: { url: imageUrl } },
-                { type: "text", text: "Describe this image in detail. Focus on text content, UI elements, diagrams, and any information that would help someone understand the image without seeing it. Be concise but complete." },
-              ],
-            }],
-            max_tokens: 1024,
-            temperature: 0,
-          };
+        const MAX_RETRIES = 2;
+        let description = "";
+        let lastError = "";
 
-          const resp = await callUpstreamChat(
-            visionProvider.config.baseUrl,
-            visionProvider.config.apiKey,
-            visionBody,
-            visionProvider.config.wireFormat,
-          );
+        for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+          try {
+            const visionBody = {
+              model: visionModel.id,
+              messages: [{
+                role: "user",
+                content: [
+                  { type: "image_url", image_url: { url: imageUrl } },
+                  { type: "text", text: "Describe this image in detail. Focus on text content, UI elements, diagrams, and any information that would help someone understand the image without seeing it. Be concise but complete." },
+                ],
+              }],
+              max_tokens: 1024,
+              temperature: 0,
+            };
 
-          const choices = (resp as Record<string, unknown>).choices as Array<Record<string, unknown>> | undefined;
-          const description = (choices?.[0]?.message as Record<string, unknown>)?.content as string ?? "";
+            const resp = await callUpstreamChat(
+              visionProvider.config.baseUrl,
+              visionProvider.config.apiKey,
+              visionBody,
+              visionProvider.config.wireFormat,
+            );
 
-          if (description) {
-            log.info("[vision-fallback] got description", { chars: description.length });
-            newContent.push({ type: "text", text: `[Image description] ${description}` });
-          } else {
-            log.warn("[vision-fallback] empty description, keeping original image");
-            newContent.push(inner);
+            const choices = (resp as Record<string, unknown>).choices as Array<Record<string, unknown>> | undefined;
+            description = (choices?.[0]?.message as Record<string, unknown>)?.content as string ?? "";
+
+            if (description) break;
+
+            lastError = "empty description";
+            if (attempt < MAX_RETRIES) {
+              log.warn("[vision-fallback] empty description, retrying", { imageIndex: totalImages, attempt: attempt + 1 });
+            }
+          } catch (err) {
+            lastError = (err as Error).message;
+            if (attempt < MAX_RETRIES) {
+              log.warn("[vision-fallback] vision call failed, retrying", { imageIndex: totalImages, attempt: attempt + 1, error: lastError });
+            }
           }
-        } catch (err) {
-          log.warn("[vision-fallback] vision model failed, keeping original image", {
-            error: (err as Error).message,
-          });
-          newContent.push(inner);
+        }
+
+        if (description) {
+          log.info("[vision-fallback] description received", { chars: description.length, imageIndex: totalImages });
+          newContent.push({ type: "text", text: `[Image description] ${description}` });
+          replacedImages++;
+        } else {
+          log.error("[vision-fallback] all retries exhausted", { imageIndex: totalImages, error: lastError });
+          newContent.push({ type: "text", text: `[Image description] (vision model failed after ${MAX_RETRIES + 1} attempts: ${lastError.slice(0, 80)})` });
+          failedImages++;
         }
       }
 
       block.content = newContent;
     }
+  }
+
+  if (totalImages > 0) {
+    log.info("[vision-fallback] summary", {
+      total: totalImages,
+      replaced: replacedImages,
+      failed: failedImages,
+      visionModel: visionModel.id,
+    });
   }
 }
 
@@ -1032,6 +1278,174 @@ async function* bufferAndInterceptStreamOpenAI(
   for (const c of pendingChunks) yield c;
 }
 
+/**
+ * Buffer a Chat Completions SSE stream, convert to Responses API format,
+ * and re-emit as Responses API SSE events.
+ *
+ * Used when Codex sends a Responses API request — we convert it to Chat
+ * Completions for the upstream, then convert the response back.
+ */
+async function* bufferChatStreamToResponses(
+  rawStream: AsyncGenerator<string, void, unknown>,
+  requestModel: string,
+  usageRef?: { inputTokens: number; outputTokens: number },
+): AsyncGenerator<string, void, unknown> {
+  // Buffer the entire Chat Completions stream
+  let model = requestModel;
+  let finishReason: string | null = null;
+  const contentDeltas: string[] = [];
+  const toolCallDeltas = new Map<number, { id?: string; name?: string; arguments: string }>();
+  let usage: Record<string, number> = { prompt_tokens: 0, completion_tokens: 0 };
+
+  for await (const chunk of rawStream) {
+    const lines = chunk.split("\n");
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith(":")) continue;
+      if (!trimmed.startsWith("data: ")) continue;
+      const payload = trimmed.slice(6).trim();
+      if (payload === "[DONE]") { finishReason = finishReason ?? "stop"; continue; }
+      try {
+        const parsed = JSON.parse(payload) as Record<string, unknown>;
+        if (parsed.model && typeof parsed.model === "string") model = parsed.model;
+        if (parsed.usage) usage = parsed.usage as Record<string, number>;
+        const choices = parsed.choices as Array<Record<string, unknown>> | undefined;
+        if (!choices?.length) continue;
+        const choice = choices[0];
+        const delta = choice.delta as Record<string, unknown> | undefined;
+        const reason = (choice.finish_reason ?? parsed.finish_reason) as string | null;
+        if (reason) finishReason = reason;
+        if (delta) {
+          if (typeof delta.content === "string") contentDeltas.push(delta.content);
+          const toolCalls = delta.tool_calls as Array<Record<string, unknown>> | undefined;
+          if (toolCalls) {
+            for (const tc of toolCalls) {
+              const idx = tc.index as number;
+              if (!toolCallDeltas.has(idx)) toolCallDeltas.set(idx, { arguments: "" });
+              const entry = toolCallDeltas.get(idx)!;
+              if (tc.id) entry.id = tc.id as string;
+              const fn = tc.function as Record<string, unknown> | undefined;
+              if (fn?.name) entry.name = fn.name as string;
+              if (typeof fn?.arguments === "string") entry.arguments += fn.arguments;
+            }
+          }
+        }
+      } catch { /* skip malformed chunks */ }
+    }
+  }
+
+  if (usageRef) {
+    usageRef.inputTokens = usage.prompt_tokens ?? 0;
+    usageRef.outputTokens = usage.completion_tokens ?? 0;
+  }
+
+  // Build Responses API format
+  const output: Array<Record<string, unknown>> = [];
+  const fullContent = contentDeltas.join("");
+  if (fullContent) {
+    output.push({
+      type: "message",
+      id: `msg_${Date.now().toString(36)}`,
+      role: "assistant",
+      status: "completed",
+      content: [{ type: "output_text", text: fullContent }],
+    });
+  }
+  if (toolCallDeltas.size > 0) {
+    for (const [, entry] of toolCallDeltas) {
+      output.push({
+        type: "function_call",
+        id: entry.id || `fc_${Date.now().toString(36)}`,
+        call_id: entry.id || `call_${Date.now().toString(36)}`,
+        name: entry.name ?? "unknown",
+        arguments: entry.arguments,
+        status: "completed",
+      });
+    }
+  }
+
+  const respId = `resp_${Date.now().toString(36)}`;
+  const created = Math.floor(Date.now() / 1000);
+  const responseStatus = finishReason === "tool_calls" ? "requires_action" : "completed";
+
+  // Emit Responses API SSE events
+  const emitSSE = (event: string, data: unknown): string =>
+    `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+
+  // response.created
+  yield emitSSE("response.created", {
+    type: "response.created",
+    response: {
+      id: respId, object: "response", created_at: created,
+      model, status: "in_progress", output: [],
+    },
+  });
+
+  // response.output_item.added + content for message
+  if (fullContent) {
+    yield emitSSE("response.output_item.added", {
+      type: "response.output_item.added",
+      output_index: 0,
+      item: output[0],
+    });
+    yield emitSSE("response.content_part.added", {
+      type: "response.content_part.added",
+      output_index: 0,
+      content_index: 0,
+      part: { type: "output_text", text: "" },
+    });
+    yield emitSSE("response.output_text.delta", {
+      type: "response.output_text.delta",
+      output_index: 0,
+      content_index: 0,
+      delta: fullContent,
+    });
+    yield emitSSE("response.content_part.done", {
+      type: "response.content_part.done",
+      output_index: 0,
+      content_index: 0,
+      part: { type: "output_text", text: fullContent },
+    });
+    yield emitSSE("response.output_item.done", {
+      type: "response.output_item.done",
+      output_index: 0,
+      item: output[0],
+    });
+  }
+
+  // Function call items
+  let outputIdx = fullContent ? 1 : 0;
+  for (const item of output) {
+    if (item.type === "function_call") {
+      yield emitSSE("response.output_item.added", {
+        type: "response.output_item.added",
+        output_index: outputIdx,
+        item,
+      });
+      yield emitSSE("response.output_item.done", {
+        type: "response.output_item.done",
+        output_index: outputIdx,
+        item,
+      });
+      outputIdx++;
+    }
+  }
+
+  // response.completed
+  yield emitSSE("response.completed", {
+    type: "response.completed",
+    response: {
+      id: respId, object: "response", created_at: created,
+      model, status: responseStatus, output,
+      usage: {
+        input_tokens: usage.prompt_tokens ?? 0,
+        output_tokens: usage.completion_tokens ?? 0,
+        total_tokens: (usage.prompt_tokens ?? 0) + (usage.completion_tokens ?? 0),
+      },
+    },
+  });
+}
+
 // ============================================================================
 // Pipeline Execution
 // ============================================================================
@@ -1110,11 +1524,26 @@ export async function executePipeline(
     response = chatToAnthropic(chatResponse, requestModel || targetModel) as unknown as Record<string, unknown>;
   } else {
     const chatBody = { ...body, model: targetModel };
-    response = await callUpstreamChat(
-      provider.config.baseUrl,
-      provider.config.apiKey,
-      chatBody,
-    );
+    if (isResponsesAPI(body)) {
+      const converted = responsesToChatCompletions(body);
+      converted.model = targetModel;
+      log.info("[responses-api] converting to chat completions", {
+        input: typeof body.input === "string" ? (body.input as string).slice(0, 80) : "array",
+        tools: Array.isArray(body.tools) ? body.tools.length : 0,
+      });
+      const chatResponse = await callUpstreamChat(
+        provider.config.baseUrl,
+        provider.config.apiKey,
+        converted,
+      );
+      response = chatCompletionsToResponses(chatResponse, requestModel || targetModel);
+    } else {
+      response = await callUpstreamChat(
+        provider.config.baseUrl,
+        provider.config.apiKey,
+        chatBody,
+      );
+    }
   }
 
   // Intercept web_fetch tool_use for ALL non-MiMo models.
@@ -1232,6 +1661,22 @@ export async function executePipelineStream(
     );
     const anthropicStream = openaiSSEToAnthropicSSE(upstreamStream, requestModel || targetModel, undefined, targetModel);
     stream = bufferAndInterceptStream(anthropicStream, requestModel || targetModel, usageRef);
+  } else if (isResponsesAPI(body)) {
+    // Responses API → Chat Completions → upstream → convert response back
+    const converted = responsesToChatCompletions(body);
+    converted.model = targetModel;
+    converted.stream = true;
+    log.info("[responses-api:stream] converting to chat completions", {
+      input: typeof body.input === "string" ? (body.input as string).slice(0, 80) : "array",
+      tools: Array.isArray(body.tools) ? body.tools.length : 0,
+    });
+    const rawStream = callUpstreamChatStreaming(
+      provider.config.baseUrl,
+      provider.config.apiKey,
+      converted,
+    );
+    // Buffer the Chat Completions stream, convert to Responses API format, re-emit
+    stream = bufferChatStreamToResponses(rawStream, requestModel || targetModel, usageRef);
   } else {
     const chatBody = { ...body, model: targetModel, stream: true };
     const rawStream = callUpstreamChatStreaming(

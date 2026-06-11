@@ -64,12 +64,14 @@ export function handleDashboard(cfg: GatewayConfig, req: IncomingMessage, res: S
   }
 
   // API: Restart — set restart flag and exit
-  // fv-claude watcher will detect the flag, restart server, and apply new config
+  // fv-claude / fv-codex watcher will detect the flag, restart server, and apply new config
   if (req.method === "POST" && url === "/dashboard/api/restart") {
     try {
-      // Write restart flag for fv-claude watcher
-      writeFileSync(RESTART_FLAG, String(Date.now()));
-      log.info("Dashboard restart: restart flag written");
+      // Write restart flag with clientType so the correct watcher handles it
+      const settings = loadSettings();
+      const clientType = settings.clientType || "claude";
+      writeFileSync(RESTART_FLAG, clientType + ":" + Date.now());
+      log.info("Dashboard restart: restart flag written (" + clientType + ")");
 
       res.writeHead(200, {
         "Content-Type": "application/json",

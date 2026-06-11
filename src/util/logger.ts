@@ -1,4 +1,7 @@
 import { RingBuffer } from "./ring-buffer.js";
+import { appendFileSync, mkdirSync, existsSync, statSync, renameSync } from "node:fs";
+import { join } from "node:path";
+import { homedir } from "node:os";
 
 type Level = "debug" | "info" | "warn" | "error";
 
@@ -11,6 +14,27 @@ export interface LogEntry {
 
 let verbose = false;
 const logBuffer = new RingBuffer<LogEntry>(200);
+const FV_DIR = join(homedir(), ".fallback-vision");
+const LOG_FILE = join(FV_DIR, "server.log");
+const MAX_LOG_SIZE = 10 * 1024 * 1024; // 10MB rotation
+
+function ensureLogDir(): void {
+  if (!existsSync(FV_DIR)) mkdirSync(FV_DIR, { recursive: true });
+}
+
+function rotateLog(): void {
+  try {
+    if (!existsSync(LOG_FILE)) return;
+    const stat = statSync(LOG_FILE);
+    if (stat.size > MAX_LOG_SIZE) {
+      const bak = LOG_FILE + ".old";
+      if (existsSync(bak)) {
+        // keep only one old log
+      }
+      renameSync(LOG_FILE, bak);
+    }
+  } catch {}
+}
 
 export function setVerbose(v: boolean): void {
   verbose = v;
@@ -24,11 +48,20 @@ function emit(level: Level, msg: string, extra?: Record<string, unknown>): void 
   if (level === "debug" && !verbose) return;
   const ts = new Date().toISOString();
   const prefix = `[${ts}] ${level.toUpperCase()}`;
-  if (extra) {
-    console.error(prefix, msg, JSON.stringify(extra));
-  } else {
-    console.error(prefix, msg);
-  }
+  const line = extra
+    ? `${prefix} ${msg} ${JSON.stringify(extra)}`
+    : `${prefix} ${msg}`;
+
+  // Always to stderr (for foreground debugging)
+  console.error(line);
+
+  // Always to file (for background debugging)
+  try {
+    ensureLogDir();
+    rotateLog();
+    appendFileSync(LOG_FILE, line + "\n", "utf-8");
+  } catch {}
+
   logBuffer.push({ ts, level, msg, extra: extra ? JSON.stringify(extra) : undefined });
 }
 

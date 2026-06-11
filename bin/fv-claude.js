@@ -14,6 +14,8 @@ const PID_FILE = join(FV_DIR, "server.pid");
 const RESTART_FLAG = join(FV_DIR, ".restart");
 const CLAUDE_SETTINGS = join(homedir(), ".claude", "settings.json");
 const ORIGINAL_SETTINGS = join(FV_DIR, "original-claude-settings.json");
+const CODEX_CONFIG = join(homedir(), ".codex", "config.toml");
+const CODEX_CONFIG_BAK = join(FV_DIR, "original-codex-config.toml");
 
 function findProjectRoot() {
   const scriptDir = dirname(new URL(import.meta.url).pathname);
@@ -142,6 +144,8 @@ function writeProxyConfig() {
   settings.env.ANTHROPIC_DEFAULT_HAIKU_MODEL = modelName;
   settings.env.ANTHROPIC_DEFAULT_SONNET_MODEL = modelName;
   settings.env.ANTHROPIC_DEFAULT_OPUS_MODEL = modelName;
+  settings.env.FV_CLAUDE = "1";
+  settings.env.FV_MAIN_MODEL = modelName;
 
   writeFileSync(CLAUDE_SETTINGS, JSON.stringify(settings, null, 2));
 
@@ -162,6 +166,36 @@ function writeProxyConfig() {
   console.log("   模型: " + modelName);
 }
 
+// ── Codex 配置 ──
+function storeOriginalCodexConfig() {
+  if (!existsSync(CODEX_CONFIG)) return;
+  if (existsSync(CODEX_CONFIG_BAK)) return;
+  try {
+    const content = readFileSync(CODEX_CONFIG, "utf-8");
+    if (content.includes("127.0.0.1:" + PORT)) return;
+  } catch {}
+  copyFileSync(CODEX_CONFIG, CODEX_CONFIG_BAK);
+  console.log("📋 已备份原始 Codex 配置");
+}
+
+function writeCodexConfig() {
+  if (!existsSync(CODEX_CONFIG)) return;
+  try {
+    let content = readFileSync(CODEX_CONFIG, "utf-8");
+    const baseUrlPattern = /(base_url\s*=\s*"http:\/\/127\.0\.0\.1:)\d+(\/v1")/;
+    if (baseUrlPattern.test(content)) {
+      content = content.replace(baseUrlPattern, `$1${PORT}$2`);
+      writeFileSync(CODEX_CONFIG, content);
+      const verify = readFileSync(CODEX_CONFIG, "utf-8");
+      if (verify.includes("127.0.0.1:" + PORT)) {
+        console.log("✅ Codex 配置已同步: 127.0.0.1:" + PORT);
+      }
+    }
+  } catch (e) {
+    console.error("⚠️  Codex 配置同步失败:", e.message);
+  }
+}
+
 async function startAndConfigure(root, isFirstStart) {
   killPort(PORT);
   killServerByPid();
@@ -176,6 +210,8 @@ async function startAndConfigure(root, isFirstStart) {
   console.log("✅ 服务就绪");
   if (isFirstStart) storeOriginalSettings();
   writeProxyConfig();
+  if (isFirstStart) storeOriginalCodexConfig();
+  writeCodexConfig();
   if (isFirstStart) openBrowser("http://127.0.0.1:" + PORT + "/");
   return true;
 }
@@ -193,9 +229,9 @@ async function main() {
 
   var isRunning = await checkHealth(PORT);
   if (isRunning) {
-    console.log("✅ 服务已在运行");
+    console.log("✅ 代理已经在运行");
     writeProxyConfig();
-    openBrowser("http://127.0.0.1:" + PORT + "/");
+    process.exit(0);
   } else {
     var ok = await startAndConfigure(root, true);
     if (!ok) process.exit(1);
@@ -204,6 +240,11 @@ async function main() {
   // 监控重启信号
   var watcher = setInterval(async function() {
     if (!existsSync(RESTART_FLAG)) return;
+    // 只处理 Claude 的重启信号（.restart 文件内容包含 "claude"）
+    try {
+      var flag = readFileSync(RESTART_FLAG, "utf-8").trim();
+      if (flag && !flag.includes("claude")) return;
+    } catch(e) { return; }
     unlinkSync(RESTART_FLAG);
     console.log("\n🔄 检测到重启信号...");
     var ok = await startAndConfigure(root, false);
@@ -218,6 +259,13 @@ async function main() {
   var watchdog = setInterval(async function() {
     var alive = await checkHealth(PORT, 5000);
     if (!alive) {
+      // 如果有重启信号且不是 Claude 的，不要抢 — fv-codex 在处理
+      try {
+        if (existsSync(RESTART_FLAG)) {
+          var flag = readFileSync(RESTART_FLAG, "utf-8").trim();
+          if (flag && flag.includes("codex")) return;
+        }
+      } catch(e) {}
       console.warn("\n⚠️  Proxy 进程无响应，自动重启中...");
       var ok = await startAndConfigure(root, false);
       if (ok) {
