@@ -1,6 +1,6 @@
 {
   "name": "fallback-vision",
-  "version": "0.6.4",
+  "version": "0.6.5",
   "description": "AI Gateway with visual fallback routing, hybrid multi-backend search, and protocol translation for Claude Code & Codex",
   "type": "module",
   "main": "dist/index.js",
