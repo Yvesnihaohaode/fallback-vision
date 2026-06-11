@@ -84,6 +84,16 @@ function writeCodexConfig() {
   }
 }
 
+function ensureClientType(type) {
+  const settingsPath = join(FV_DIR, "settings.json");
+  let settings = {};
+  try { settings = JSON.parse(readFileSync(settingsPath, "utf-8")); } catch {}
+  if (settings.clientType !== type) {
+    settings.clientType = type;
+    try { writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n"); } catch {}
+  }
+}
+
 function openBrowser(url) {
   try {
     if (platform() === "win32") {
@@ -94,22 +104,6 @@ function openBrowser(url) {
       spawn("xdg-open", [url], { stdio: "ignore", detached: true }).unref();
     }
   } catch {}
-}
-
-function isConfigured() {
-  try {
-    const settings = JSON.parse(readFileSync(join(FV_DIR, "settings.json"), "utf-8"));
-    return !!(settings.mainModel && settings.mainModel.apiKey);
-  } catch { return false; }
-}
-
-function launchCodex() {
-  console.log("🔧 启动 Codex...");
-  if (platform() === "darwin" && existsSync("/Applications/Codex.app")) {
-    spawn("open", ["/Applications/Codex.app"], { stdio: "ignore", detached: true }).unref();
-  } else {
-    console.log("   请手动打开 Codex");
-  }
 }
 
 async function startServer(root) {
@@ -132,9 +126,9 @@ async function doRestart(root) {
   await startServer(root);
   const ok = await waitForServer(PORT, 15000);
   if (ok) {
+    ensureClientType("codex");
     writeCodexConfig();
-    if (isConfigured()) launchCodex();
-    console.log("✅ 服务重启成功");
+    console.log("✅ 服务重启成功，请手动打开 Codex");
   } else {
     console.error("❌ 重启失败");
   }
@@ -171,16 +165,16 @@ async function main() {
     console.log("✅ 服务启动成功");
   }
 
+  // 确保 dashboard 显示 Codex 模式
+  ensureClientType("codex");
+
   // 配置 Codex 指向 FV 代理端口
   storeOriginalCodexConfig();
   writeCodexConfig();
 
-  // 启动 Codex（仅在已配置时）
-  if (isConfigured()) {
-    launchCodex();
-  } else {
-    console.log("⚠️  FV 尚未配置上游模型，请先在网页上配置，然后手动启动 Codex\n");
-  }
+  // Codex 由用户手动打开
+  openBrowser("http://127.0.0.1:" + PORT + "/");
+  console.log("ℹ️  服务已就绪，请手动打开 Codex\n");
 
   console.log("\n🌐 Web UI: http://127.0.0.1:" + PORT + "/");
 
@@ -206,9 +200,9 @@ async function main() {
           await startServer(root);
           const ok = await waitForServer(PORT, 15000);
           if (ok) {
+            ensureClientType("codex");
             writeCodexConfig();
-            if (isConfigured()) launchCodex();
-            console.log("✅ Proxy 已自动恢复");
+            console.log("✅ Proxy 已自动恢复，请手动打开 Codex");
           } else {
             console.error("❌ Proxy 自动恢复失败");
           }

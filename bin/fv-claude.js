@@ -93,6 +93,16 @@ function startServer(root) {
   });
 }
 
+function ensureClientType(type) {
+  var settingsPath = join(FV_DIR, "settings.json");
+  var settings = {};
+  try { settings = JSON.parse(readFileSync(settingsPath, "utf-8")); } catch(e) {}
+  if (settings.clientType !== type) {
+    settings.clientType = type;
+    try { writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n"); } catch(e) {}
+  }
+}
+
 function openBrowser(url) {
   try {
     var cmd = platform() === "win32" ? "cmd.exe" : platform() === "darwin" ? "open" : "xdg-open";
@@ -208,6 +218,7 @@ async function startAndConfigure(root, isFirstStart) {
     return false;
   }
   console.log("✅ 服务就绪");
+  ensureClientType("claude");
   if (isFirstStart) storeOriginalSettings();
   writeProxyConfig();
   if (isFirstStart) storeOriginalCodexConfig();
@@ -230,7 +241,9 @@ async function main() {
   var isRunning = await checkHealth(PORT);
   if (isRunning) {
     console.log("✅ 代理已经在运行");
+    ensureClientType("claude");
     writeProxyConfig();
+    openBrowser("http://127.0.0.1:" + PORT + "/");
     process.exit(0);
   } else {
     var ok = await startAndConfigure(root, true);

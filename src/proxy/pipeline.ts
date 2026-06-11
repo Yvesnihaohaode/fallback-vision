@@ -102,6 +102,48 @@ function isResponsesAPI(body: Record<string, unknown>): boolean {
   return "input" in body && !("messages" in body);
 }
 
+/** Detect images in OpenAI-format bodies (Chat Completions + Responses API) */
+function hasOpenAIImages(body: Record<string, unknown>): boolean {
+  // Responses API format: input[].content[] with type "input_image"
+  const input = body.input as Array<Record<string, unknown>> | undefined;
+  if (Array.isArray(input)) {
+    for (const item of input) {
+      if ((item.type as string) !== "message") continue;
+      const content = item.content as Array<Record<string, unknown>> | undefined;
+      if (!Array.isArray(content)) continue;
+      for (const part of content) {
+        if ((part.type as string) === "input_image") return true;
+      }
+    }
+  }
+  // Chat Completions format: messages[].content[] with type "image_url"
+  const messages = body.messages as Array<Record<string, unknown>> | undefined;
+  if (Array.isArray(messages)) {
+    for (const msg of messages) {
+      const content = msg.content as Array<Record<string, unknown>> | undefined;
+      if (!Array.isArray(content)) continue;
+      for (const part of content) {
+        const t = part.type as string;
+        if (t === "image_url" || t === "input_image") return true;
+      }
+    }
+  }
+  return false;
+}
+
+/** Convert Responses API content parts to Chat Completions format */
+function convertContentParts(parts: unknown): unknown {
+  if (typeof parts === "string") return parts;
+  if (!Array.isArray(parts)) return parts;
+  return parts.map((p: Record<string, unknown>) => {
+    if (p.type === "input_text") return { type: "text", text: p.text };
+    if (p.type === "output_text") return { type: "text", text: p.text };
+    if (p.type === "input_image") return { type: "image_url", image_url: { url: p.image_url } };
+    if (p.type === "refusal") return { type: "text", text: p.refusal };
+    return p;
+  });
+}
+
 /** Convert Responses API request to Chat Completions format */
 function responsesToChatCompletions(body: Record<string, unknown>): Record<string, unknown> {
   const messages: Array<Record<string, unknown>> = [];
@@ -121,9 +163,29 @@ function responsesToChatCompletions(body: Record<string, unknown>): Record<strin
         messages.push({ role: "user", content: item });
       } else if (item && typeof item === "object") {
         const role = (item.role as string) || "user";
-        // item could be { type: "message", role, content } or { type: "input_text", text }
-        if (item.type === "message" && item.content) {
-          messages.push({ role, content: item.content });
+        if (item.type === "function_call") {
+          // Convert Responses API function_call to assistant message with tool_calls
+          messages.push({
+            role: "assistant",
+            content: null,
+            tool_calls: [{
+              id: item.call_id || item.id,
+              type: "function",
+              function: {
+                name: item.name,
+                arguments: typeof item.arguments === "string" ? item.arguments : JSON.stringify(item.arguments ?? {}),
+              },
+            }],
+          });
+        } else if (item.type === "function_call_output") {
+          // Convert to tool message
+          messages.push({
+            role: "tool",
+            tool_call_id: item.call_id,
+            content: typeof item.output === "string" ? item.output : JSON.stringify(item.output ?? ""),
+          });
+        } else if (item.type === "message" && item.content) {
+          messages.push({ role, content: convertContentParts(item.content) });
         } else if (item.type === "input_text" && item.text) {
           messages.push({ role, content: item.text });
         } else if (item.type === "input_image" && item.image_url) {
@@ -131,10 +193,12 @@ function responsesToChatCompletions(body: Record<string, unknown>): Record<strin
             role,
             content: [{ type: "image_url", image_url: { url: item.image_url } }],
           });
-        } else if (item.text) {
+        } else if (item.type === "reasoning" || item.type === "item_reference") {
+          // Skip — Chat Completions has no equivalent, and these are not needed for upstream
+        } else if (item.text && item.type !== "function_call" && item.type !== "function_call_output") {
           messages.push({ role, content: item.text });
-        } else if (item.content) {
-          messages.push({ role, content: item.content });
+        } else if (item.content && item.type !== "function_call" && item.type !== "function_call_output") {
+          messages.push({ role, content: convertContentParts(item.content) });
         }
       }
     }
@@ -160,8 +224,11 @@ function responsesToChatCompletions(body: Record<string, unknown>): Record<strin
   // Convert tools format: Responses API uses { type: "function", name, ... }
   // Chat Completions uses { type: "function", function: { name, parameters, ... } }
   if (Array.isArray(body.tools) && body.tools.length > 0) {
-    chatBody.tools = body.tools.map((t: Record<string, unknown>) => {
-      if (t.type === "function") {
+    const toolTypes = body.tools.map((t: Record<string, unknown>) => t.type);
+    log.info("[responses-api] tool types", { types: toolTypes });
+    chatBody.tools = body.tools
+      .filter((t: Record<string, unknown>) => t.type === "function")
+      .map((t: Record<string, unknown>) => {
         return {
           type: "function",
           function: {
@@ -171,9 +238,9 @@ function responsesToChatCompletions(body: Record<string, unknown>): Record<strin
             strict: t.strict,
           },
         };
-      }
-      return t;
-    });
+      });
+    const dropped = body.tools.length - (chatBody.tools as Array<unknown>).length;
+    if (dropped > 0) log.warn("[responses-api] dropped non-function tools", { count: dropped });
   }
 
   if (body.tool_choice !== undefined) chatBody.tool_choice = body.tool_choice;
@@ -197,12 +264,15 @@ function chatCompletionsToResponses(
 
   // Message output
   if (msg.content) {
+    const content = typeof msg.content === "string"
+      ? [{ type: "output_text", text: msg.content }]
+      : (Array.isArray(msg.content) ? msg.content as Array<Record<string, unknown>> : [{ type: "output_text", text: String(msg.content) }]);
     output.push({
       type: "message",
       id: `msg_${Date.now().toString(36)}`,
       role: "assistant",
       status: "completed",
-      content: [{ type: "output_text", text: msg.content }],
+      content,
     });
   }
 
@@ -649,7 +719,8 @@ function resolveTarget(
   if (!mainProvider) throw new Error("no provider configured");
 
   const mainModelId = mainProvider.config.defaultModel;
-  const hasImages = protocol === "anthropic" && hasAnthropicImages(body);
+  const hasImages = (protocol === "anthropic" && hasAnthropicImages(body)) ||
+    (protocol === "openai" && hasOpenAIImages(body));
 
   if (hasImages) {
     // Find vision model across ALL providers (not just main)
@@ -1432,17 +1503,33 @@ async function* bufferChatStreamToResponses(
   }
 
   // response.completed
+  const completedResponse: Record<string, unknown> = {
+    id: respId, object: "response", created_at: created,
+    model, status: responseStatus, output,
+    usage: {
+      input_tokens: usage.prompt_tokens ?? 0,
+      output_tokens: usage.completion_tokens ?? 0,
+      total_tokens: (usage.prompt_tokens ?? 0) + (usage.completion_tokens ?? 0),
+    },
+  };
+  if (responseStatus === "requires_action") {
+    completedResponse.required_action = {
+      type: "submit_tool_outputs",
+      submit_tool_outputs: {
+        tool_calls: output
+          .filter((o) => o.type === "function_call")
+          .map((o) => ({
+            id: o.call_id || o.id,
+            type: "function",
+            name: o.name,
+            arguments: o.arguments,
+          })),
+      },
+    };
+  }
   yield emitSSE("response.completed", {
     type: "response.completed",
-    response: {
-      id: respId, object: "response", created_at: created,
-      model, status: responseStatus, output,
-      usage: {
-        input_tokens: usage.prompt_tokens ?? 0,
-        output_tokens: usage.completion_tokens ?? 0,
-        total_tokens: (usage.prompt_tokens ?? 0) + (usage.completion_tokens ?? 0),
-      },
-    },
+    response: completedResponse,
   });
 }
 
