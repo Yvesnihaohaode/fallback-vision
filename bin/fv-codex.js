@@ -96,6 +96,13 @@ function openBrowser(url) {
   } catch {}
 }
 
+function isConfigured() {
+  try {
+    const settings = JSON.parse(readFileSync(join(FV_DIR, "settings.json"), "utf-8"));
+    return !!(settings.mainModel && settings.mainModel.apiKey);
+  } catch { return false; }
+}
+
 function launchCodex() {
   console.log("🔧 启动 Codex...");
   if (platform() === "darwin" && existsSync("/Applications/Codex.app")) {
@@ -126,7 +133,7 @@ async function doRestart(root) {
   const ok = await waitForServer(PORT, 15000);
   if (ok) {
     writeCodexConfig();
-    launchCodex();
+    if (isConfigured()) launchCodex();
     console.log("✅ 服务重启成功");
   } else {
     console.error("❌ 重启失败");
@@ -168,8 +175,12 @@ async function main() {
   storeOriginalCodexConfig();
   writeCodexConfig();
 
-  // 直接启动 Codex
-  launchCodex();
+  // 启动 Codex（仅在已配置时）
+  if (isConfigured()) {
+    launchCodex();
+  } else {
+    console.log("⚠️  FV 尚未配置上游模型，请先在网页上配置，然后手动启动 Codex\n");
+  }
 
   console.log("\n🌐 Web UI: http://127.0.0.1:" + PORT + "/");
 
@@ -196,7 +207,7 @@ async function main() {
           const ok = await waitForServer(PORT, 15000);
           if (ok) {
             writeCodexConfig();
-            launchCodex();
+            if (isConfigured()) launchCodex();
             console.log("✅ Proxy 已自动恢复");
           } else {
             console.error("❌ Proxy 自动恢复失败");
